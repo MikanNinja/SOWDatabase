@@ -103,6 +103,10 @@ export interface LinkResolutionResult {
 export interface Settings {
   siteName: string
   siteDescription: string
+  /** 导航栏副标题（品牌名右侧的小字），可在后台修改，默认“资料索引”。 */
+  navLabel: string
+  /** 页脚文字，可在后台修改，默认“内容公开可读，仅由站点拥有者维护。”。 */
+  footerText: string
 }
 
 export interface SaveTextResult {

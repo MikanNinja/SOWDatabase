@@ -2,6 +2,7 @@ import Link from "next/link"
 import { getStore } from "@/lib/db/store"
 import type { Store } from "@/lib/db/store"
 import { ENTITY_TYPE_LABELS } from "@/lib/db/types"
+import Breadcrumb from "@/components/Breadcrumb"
 
 export const dynamic = "force-dynamic"
 
@@ -28,7 +29,7 @@ export default async function SearchPage(props: {
   return (
     <div className="container">
       <header className="record-header">
-        <p className="page-kicker">公开资料 / 名称检索</p>
+        <Breadcrumb items={[{ label: "实体检索" }]} />
         <h1 className="page-title">实体检索</h1>
         <p className="page-subtitle">当前检索人物、地点、势力的标准名称和别名。</p>
       </header>
@@ -63,7 +64,6 @@ export default async function SearchPage(props: {
                     <thead>
                       <tr>
                         <th scope="col">标准名称</th>
-                        <th scope="col">别名</th>
                         <th scope="col">简介</th>
                       </tr>
                     </thead>
@@ -75,7 +75,6 @@ export default async function SearchPage(props: {
                               {entity.name}
                             </Link>
                           </td>
-                          <td>{entity.aliases.length > 0 ? entity.aliases.join("、") : ""}</td>
                           <td>{entity.intro ? entity.intro.slice(0, 120) : ""}</td>
                         </tr>
                       ))}

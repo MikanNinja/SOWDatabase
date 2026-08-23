@@ -17,6 +17,8 @@ async function main() {
   await store.updateSettings({
     siteName: "雾海边境资料库",
     siteDescription: "《雾海边境》中文人物、地点、势力资料库（虚构测试数据）",
+    navLabel: "资料索引",
+    footerText: "内容公开可读，仅由站点拥有者维护。",
   })
 
   // 人物

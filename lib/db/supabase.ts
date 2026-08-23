@@ -97,11 +97,15 @@ export class SupabaseStore implements Store {
   async init(): Promise<void> {
     await this.supabase
       .from("settings")
-      .insert([
-        { key: "site_name", value: process.env.SITE_NAME || "游戏资料库" },
-        { key: "site_description", value: process.env.SITE_DESCRIPTION || "" },
-      ])
-      .select()
+      .upsert(
+        [
+          { key: "site_name", value: process.env.SITE_NAME || "游戏资料库" },
+          { key: "site_description", value: process.env.SITE_DESCRIPTION || "" },
+          { key: "nav_label", value: process.env.NAV_LABEL || "资料索引" },
+          { key: "footer_text", value: process.env.FOOTER_TEXT || "内容公开可读，仅由站点拥有者维护。" },
+        ],
+        { onConflict: "key", ignoreDuplicates: true }
+      )
   }
 
   private toEntity(row: EntityRow): Entity {
@@ -188,6 +192,8 @@ export class SupabaseStore implements Store {
     return {
       siteName: map.get("site_name") || "游戏资料库",
       siteDescription: map.get("site_description") || "",
+      navLabel: map.get("nav_label") || "资料索引",
+      footerText: map.get("footer_text") || "内容公开可读，仅由站点拥有者维护。",
     }
   }
 
@@ -196,6 +202,8 @@ export class SupabaseStore implements Store {
       [
         { key: "site_name", value: settings.siteName },
         { key: "site_description", value: settings.siteDescription },
+        { key: "nav_label", value: settings.navLabel },
+        { key: "footer_text", value: settings.footerText },
       ],
       { onConflict: "key" }
     )

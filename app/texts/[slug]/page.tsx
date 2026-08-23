@@ -2,6 +2,7 @@ import Link from "next/link"
 import { notFound } from "next/navigation"
 import { getStore } from "@/lib/db/store"
 import { renderEntryBlocks } from "@/lib/render"
+import Breadcrumb from "@/components/Breadcrumb"
 
 export const dynamic = "force-dynamic"
 
@@ -39,9 +40,7 @@ export default async function TextDetailPage(props: {
   return (
     <div className="container">
       <header className="record-header">
-        <p className="record-kicker">
-          <Link href="/texts">文本索引</Link>
-        </p>
+        <Breadcrumb items={[{ label: "文本条目", href: "/texts" }, { label: entry.title }]} />
         <h1 className="page-title">{entry.title}</h1>
       </header>
 

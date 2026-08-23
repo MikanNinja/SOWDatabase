@@ -156,6 +156,8 @@ export async function updateSettingsAction(formData: FormData) {
   const store = await getStore()
   const siteName = String(formData.get("siteName") ?? "").trim()
   const siteDescription = String(formData.get("siteDescription") ?? "").trim()
-  await store.updateSettings({ siteName, siteDescription })
+  const navLabel = String(formData.get("navLabel") ?? "").trim()
+  const footerText = String(formData.get("footerText") ?? "").trim()
+  await store.updateSettings({ siteName, siteDescription, navLabel, footerText })
   redirect("/admin")
 }

@@ -223,6 +223,46 @@ h3 {
   margin: 0 0 0.2rem;
 }
 
+.breadcrumb {
+  margin: 0 0 0.35rem;
+  font-size: 0.84rem;
+  color: var(--muted);
+}
+
+.breadcrumb ol {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.breadcrumb li {
+  display: inline-flex;
+  align-items: baseline;
+}
+
+.breadcrumb a {
+  color: var(--link);
+  text-decoration: none;
+}
+
+.breadcrumb a:hover {
+  text-decoration: underline;
+}
+
+.breadcrumb span[aria-current="page"] {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.breadcrumb-sep {
+  color: var(--muted);
+  margin: 0 0.4rem;
+}
+
 .muted {
   color: var(--muted);
 }

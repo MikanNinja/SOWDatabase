@@ -65,7 +65,6 @@ export default async function AdminEntitiesPage(props: {
               <tr key={entity.id}>
                 <td>
                   <Link href={`/admin/entities/${entity.id}/edit`}>{entity.name}</Link>
-                  {entity.aliases.length > 0 ? <div className="item-meta">别名：{entity.aliases.join("、")}</div> : null}
                 </td>
                 <td>{ENTITY_TYPE_LABELS[entity.type]}</td>
                 <td><span className={`badge ${entity.status}`}>{entity.status === "published" ? "已发布" : "草稿"}</span></td>

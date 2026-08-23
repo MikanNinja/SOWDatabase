@@ -22,6 +22,16 @@ export default async function AdminSettingsPage() {
           <label htmlFor="siteDescription">站点说明</label>
           <textarea id="siteDescription" name="siteDescription" rows={3} defaultValue={settings.siteDescription} />
         </div>
+        <div className="form-field">
+          <label htmlFor="navLabel">导航栏副标题</label>
+          <input type="text" id="navLabel" name="navLabel" defaultValue={settings.navLabel} />
+          <p className="hint">显示在导航栏品牌名右侧的小字（如“资料索引”）。</p>
+        </div>
+        <div className="form-field">
+          <label htmlFor="footerText">页脚文字</label>
+          <textarea id="footerText" name="footerText" rows={2} defaultValue={settings.footerText} />
+          <p className="hint">显示在每页页脚的说明文字。</p>
+        </div>
         <div className="form-actions">
           <button type="submit" className="btn primary">
             保存设置

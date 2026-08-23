@@ -1,5 +1,6 @@
 import Link from "next/link"
 import { getStore } from "@/lib/db/store"
+import Breadcrumb from "@/components/Breadcrumb"
 
 export const dynamic = "force-dynamic"
 
@@ -21,7 +22,7 @@ export default async function TextListPage(props: {
   return (
     <div className="container">
       <header className="record-header">
-        <p className="page-kicker">公开资料 / 文本索引</p>
+        <Breadcrumb items={[{ label: "文本条目" }]} />
         <h1 className="page-title">文本条目</h1>
         <p className="page-subtitle">共 {texts.length} 条已发布记录</p>
       </header>

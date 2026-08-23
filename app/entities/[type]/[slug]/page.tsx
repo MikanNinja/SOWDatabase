@@ -3,6 +3,7 @@ import { notFound } from "next/navigation"
 import { getStore } from "@/lib/db/store"
 import { ENTITY_TYPE_LABELS } from "@/lib/db/types"
 import { renderEntryBlocks, renderMarkdownContent } from "@/lib/render"
+import Breadcrumb from "@/components/Breadcrumb"
 
 export const dynamic = "force-dynamic"
 
@@ -45,9 +46,12 @@ export default async function EntityDetailPage(props: {
   return (
     <div className="container">
       <header className="record-header">
-        <p className="record-kicker">
-          <Link href={`/entities/${entity.type}`}>{ENTITY_TYPE_LABELS[entity.type]}索引</Link>
-        </p>
+        <Breadcrumb
+          items={[
+            { label: ENTITY_TYPE_LABELS[entity.type], href: `/entities/${entity.type}` },
+            { label: entity.name },
+          ]}
+        />
         <h1 className="page-title">{entity.name}</h1>
       </header>
 

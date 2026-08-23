@@ -2,6 +2,7 @@ import Link from "next/link"
 import { notFound } from "next/navigation"
 import { getStore } from "@/lib/db/store"
 import { ENTITY_TYPE_LABELS, ENTITY_TYPES } from "@/lib/db/types"
+import Breadcrumb from "@/components/Breadcrumb"
 
 export const dynamic = "force-dynamic"
 
@@ -28,7 +29,7 @@ export default async function EntityListPage(props: {
   return (
     <div className="container">
       <header className="record-header">
-        <p className="page-kicker">公开资料 / 实体索引</p>
+        <Breadcrumb items={[{ label: ENTITY_TYPE_LABELS[entityType] }]} />
         <h1 className="page-title">{ENTITY_TYPE_LABELS[entityType]}</h1>
         <p className="page-subtitle">共 {entities.length} 条已发布记录</p>
       </header>
@@ -63,7 +64,6 @@ export default async function EntityListPage(props: {
             <thead>
               <tr>
                 <th scope="col">标准名称</th>
-                <th scope="col">别名</th>
                 <th scope="col">简介</th>
               </tr>
             </thead>
@@ -75,7 +75,6 @@ export default async function EntityListPage(props: {
                       {entity.name}
                     </Link>
                   </td>
-                  <td>{entity.aliases.length > 0 ? entity.aliases.join("、") : ""}</td>
                   <td>{entity.intro ? entity.intro.slice(0, 120) : ""}</td>
                 </tr>
               ))}

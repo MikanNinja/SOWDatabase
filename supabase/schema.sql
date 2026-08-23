@@ -108,3 +108,5 @@ create policy "settings_read" on settings for select using (true);
 -- 默认站点设置
 insert into settings (key, value) values ('site_name', '游戏资料库') on conflict (key) do nothing;
 insert into settings (key, value) values ('site_description', '') on conflict (key) do nothing;
+insert into settings (key, value) values ('nav_label', '资料索引') on conflict (key) do nothing;
+insert into settings (key, value) values ('footer_text', '内容公开可读，仅由站点拥有者维护。') on conflict (key) do nothing;

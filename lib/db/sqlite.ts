@@ -96,6 +96,8 @@ export class SQLiteStore implements Store {
     const defaults: Record<string, string> = {
       site_name: process.env.SITE_NAME || "游戏资料库",
       site_description: process.env.SITE_DESCRIPTION || "",
+      nav_label: process.env.NAV_LABEL || "资料索引",
+      footer_text: process.env.FOOTER_TEXT || "内容公开可读，仅由站点拥有者维护。",
     }
     for (const [key, value] of Object.entries(defaults)) {
       this.db
@@ -203,6 +205,8 @@ export class SQLiteStore implements Store {
     return {
       siteName: map.get("site_name") || "游戏资料库",
       siteDescription: map.get("site_description") || "",
+      navLabel: map.get("nav_label") || "资料索引",
+      footerText: map.get("footer_text") || "内容公开可读，仅由站点拥有者维护。",
     }
   }
 
@@ -212,6 +216,8 @@ export class SQLiteStore implements Store {
     )
     upsert.run("site_name", settings.siteName)
     upsert.run("site_description", settings.siteDescription)
+    upsert.run("nav_label", settings.navLabel)
+    upsert.run("footer_text", settings.footerText)
   }
 
   async listEntities(opts: ListEntitiesOpts): Promise<Entity[]> {

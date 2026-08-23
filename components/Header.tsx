@@ -13,7 +13,7 @@ export default async function Header() {
           <Link href="/" className="brand">
             {settings.siteName}
           </Link>
-          <span className="masthead-note">资料索引</span>
+          <span className="masthead-note">{settings.navLabel}</span>
         </div>
         <nav className="nav" aria-label="主要导航">
           <Link href="/entities/person">
