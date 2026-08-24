@@ -2,6 +2,7 @@ import Link from "next/link"
 import { notFound } from "next/navigation"
 import { getStore } from "@/lib/db/store"
 import TextForm from "@/components/admin/TextForm"
+import TextAssociationsForm from "@/components/admin/TextAssociationsForm"
 import { renderEntryBlocks } from "@/lib/render"
 import { computeLinkIssues } from "@/lib/links"
 import { ENTITY_TYPE_LABELS } from "@/lib/db/types"
@@ -41,6 +42,15 @@ export default async function EditTextPage(props: {
     )
   }
 
+  // v2：加载整篇级关联
+  const currentAssociations = await store.getTextEntityAssociations(entry.id)
+  const entityOptions = entities.map((e) => ({
+    id: e.id,
+    name: e.name,
+    type: e.type,
+    aliases: e.aliases,
+  }))
+
   return (
     <div>
       <header className="record-header">
@@ -71,6 +81,17 @@ export default async function EditTextPage(props: {
           <p className="hint">发布前请修正这些链接，公开页面不会显示指向不存在页面的链接。</p>
         </div>
       )}
+
+      {/* v2：整篇级关联 */}
+      <section className="record-section">
+        <h2>整篇关联</h2>
+        <p className="hint">标记整篇文本都与某实体相关。标记后，该文本在实体页面的“长篇资料”区仅显示标题与定位，不展开段落片段。</p>
+        <TextAssociationsForm
+          entryId={entry.id}
+          entities={entityOptions}
+          currentAssociations={currentAssociations}
+        />
+      </section>
 
       <section className="record-section">
         <h2>批量关联</h2>

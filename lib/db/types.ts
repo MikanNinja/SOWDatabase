@@ -23,10 +23,56 @@ export interface Entity {
   name: string
   intro: string
   note: string
+  /** 人物专属：种族（单值自由文字，可留空） */
+  race?: string
+  /** 地点/势力专属：上级实体的稳定标识，单值，构成单父树 */
+  parentId?: string | null
   status: ContentStatus
   aliases: string[]
   createdAt: string
   updatedAt: string
+}
+
+/** 人物所属势力关联（v2 新增） */
+export interface EntityFaction {
+  id: string
+  /** 人物实体 id */
+  entityId: string
+  /** 势力实体 id */
+  factionId: string
+  /** 角色/备注，如“长老”“卧底”“前任成员”，可留空 */
+  role: string
+  /** 展示排序 */
+  ordinal: number
+}
+
+/** 人物↔人物有向关系（v2 新增） */
+export interface PersonRelation {
+  id: string
+  /** 关系主体（发起方）人物 id */
+  fromId: string
+  /** 关系客体（承受方）人物 id */
+  toId: string
+  /** from 对 to 的关系称呼，自由文字 */
+  kind: string
+  /** to 对 from 的关系称呼，可留空；为空时回退为 kind 并标注“（反向）” */
+  reverseKind: string
+  /** 展示排序 */
+  ordinal: number
+  createdAt: string
+}
+
+/** 整篇级关联（v2 新增）：文本条目↔实体 */
+export interface TextEntityAssociation {
+  id: string
+  /** 所属文本条目 id */
+  entryId: string
+  /** 目标实体 id（人物/地点/势力） */
+  targetId: string
+  /** 备注，可留空 */
+  note: string
+  /** 展示排序 */
+  ordinal: number
 }
 
 export interface TextEntry {
@@ -124,4 +170,10 @@ export interface ExportData {
   textEntries: TextEntry[]
   blocks: TextBlock[]
   links: ContentLink[]
+  /** v2 新增：人物所属势力关联 */
+  factions: EntityFaction[]
+  /** v2 新增：人物关系 */
+  relations: PersonRelation[]
+  /** v2 新增：整篇级关联 */
+  textEntityAssociations: TextEntityAssociation[]
 }

@@ -41,6 +41,26 @@ export async function saveEntityAction(formData: FormData) {
   const slug = String(formData.get("slug") ?? "").trim()
   const aliases = linesToList(String(formData.get("aliases") ?? ""))
   const keepOldNameAsAlias = formData.get("keepOldNameAsAlias") === "on"
+  const race = String(formData.get("race") ?? "").trim()
+  const parentIdRaw = String(formData.get("parentId") ?? "").trim()
+  const parentId = parentIdRaw || null
+  const factionsRaw = String(formData.get("factions") ?? "")
+  let factions: { factionId: string; role?: string }[] = []
+  if (factionsRaw) {
+    try {
+      const parsed = JSON.parse(factionsRaw)
+      if (Array.isArray(parsed)) {
+        factions = parsed
+          .map((f: { factionId?: string; role?: string }) => ({
+            factionId: String(f?.factionId ?? "").trim(),
+            role: f?.role ? String(f.role).trim() : "",
+          }))
+          .filter((f: { factionId: string }) => f.factionId)
+      }
+    } catch {
+      // 忽略格式错误
+    }
+  }
 
   if (!name) throw new Error("名称不能为空")
   if (!["person", "place", "faction"].includes(type)) throw new Error("实体类型不合法")
@@ -51,6 +71,9 @@ export async function saveEntityAction(formData: FormData) {
     name,
     intro,
     note,
+    race,
+    parentId,
+    factions,
     status,
     aliases,
   }
@@ -160,4 +183,68 @@ export async function updateSettingsAction(formData: FormData) {
   const footerText = String(formData.get("footerText") ?? "").trim()
   await store.updateSettings({ siteName, siteDescription, navLabel, footerText })
   redirect("/admin")
+}
+
+// ---------- v2：人物关系 ----------
+
+export async function saveRelationAction(formData: FormData) {
+  if (!(await isAuthed())) redirect("/admin/login")
+  const store = await getStore()
+  const id = String(formData.get("id") ?? "")
+  const fromId = String(formData.get("fromId") ?? "").trim()
+  const toId = String(formData.get("toId") ?? "").trim()
+  const kind = String(formData.get("kind") ?? "").trim()
+  const reverseKind = String(formData.get("reverseKind") ?? "").trim()
+  const entityId = String(formData.get("entityId") ?? "").trim()
+
+  if (!fromId || !toId) throw new Error("关系双方人物不能为空")
+  if (!kind) throw new Error("正向称呼不能为空")
+
+  const input = { fromId, toId, kind, reverseKind }
+  if (id) {
+    await store.updateRelation(id, input)
+  } else {
+    await store.createRelation(input)
+  }
+  redirect(`/admin/entities/${entityId}/edit`)
+}
+
+export async function deleteRelationAction(formData: FormData) {
+  if (!(await isAuthed())) redirect("/admin/login")
+  const store = await getStore()
+  const id = String(formData.get("id") ?? "")
+  const entityId = String(formData.get("entityId") ?? "").trim()
+  await store.deleteRelation(id)
+  redirect(`/admin/entities/${entityId}/edit`)
+}
+
+// ---------- v2：整篇级关联 ----------
+
+export async function saveTextAssociationsAction(formData: FormData) {
+  if (!(await isAuthed())) redirect("/admin/login")
+  const store = await getStore()
+  const entryId = String(formData.get("entryId") ?? "").trim()
+  const associationsRaw = String(formData.get("associations") ?? "")
+
+  if (!entryId) throw new Error("文本条目 id 不能为空")
+
+  let associations: { targetId: string; note?: string }[] = []
+  if (associationsRaw) {
+    try {
+      const parsed = JSON.parse(associationsRaw)
+      if (Array.isArray(parsed)) {
+        associations = parsed
+          .map((a: { targetId?: string; note?: string }) => ({
+            targetId: String(a?.targetId ?? "").trim(),
+            note: a?.note ? String(a.note).trim() : "",
+          }))
+          .filter((a: { targetId: string }) => a.targetId)
+      }
+    } catch {
+      // 忽略格式错误
+    }
+  }
+
+  await store.setTextEntityAssociations(entryId, associations)
+  redirect(`/admin/texts/${entryId}/edit`)
 }

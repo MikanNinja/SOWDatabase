@@ -19,11 +19,16 @@ create table entities (
   name       text not null,
   intro      text not null default '',
   note       text not null default '',
+  race       text not null default '',
+  parent_id  uuid,
   status     content_status not null default 'draft',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   deleted    boolean not null default false
 );
+
+alter table entities add constraint entities_parent_fk
+  foreign key (parent_id) references entities(id) on delete set null;
 
 create table entity_aliases (
   id        bigserial primary key,
@@ -34,6 +39,43 @@ create table entity_aliases (
 create index idx_entity_aliases_alias on entity_aliases (alias);
 create index idx_entities_type on entities (type);
 create index idx_entities_status on entities (status);
+create index idx_entities_parent on entities (parent_id);
+
+create table entity_factions (
+  id         uuid primary key default gen_random_uuid(),
+  entity_id  uuid not null references entities(id) on delete cascade,
+  faction_id uuid not null references entities(id) on delete cascade,
+  role       text not null default '',
+  ordinal    integer not null default 0
+);
+
+create index idx_entity_factions_entity on entity_factions (entity_id, ordinal);
+create index idx_entity_factions_faction on entity_factions (faction_id);
+
+create table person_relations (
+  id           uuid primary key default gen_random_uuid(),
+  from_id      uuid not null references entities(id) on delete cascade,
+  to_id        uuid not null references entities(id) on delete cascade,
+  kind         text not null,
+  reverse_kind text not null default '',
+  note         text not null default '',
+  ordinal      integer not null default 0,
+  created_at   timestamptz not null default now()
+);
+
+create index idx_person_relations_from on person_relations (from_id, ordinal);
+create index idx_person_relations_to on person_relations (to_id, ordinal);
+
+create table text_entity_associations (
+  id        uuid primary key default gen_random_uuid(),
+  entry_id  uuid not null references text_entries(id) on delete cascade,
+  target_id uuid not null references entities(id) on delete cascade,
+  note      text not null default '',
+  ordinal   integer not null default 0
+);
+
+create index idx_text_entity_assoc_entry on text_entity_associations (entry_id, ordinal);
+create index idx_text_entity_assoc_target on text_entity_associations (target_id);
 
 create table text_entries (
   id                uuid primary key default gen_random_uuid(),
@@ -84,6 +126,9 @@ alter table text_entries enable row level security;
 alter table text_blocks enable row level security;
 alter table content_links enable row level security;
 alter table settings enable row level security;
+alter table entity_factions enable row level security;
+alter table person_relations enable row level security;
+alter table text_entity_associations enable row level security;
 
 create policy "entities_read_published" on entities
   for select using (status = 'published' and deleted = false);
@@ -104,6 +149,22 @@ create policy "content_links_read_published" on content_links
     where b.id = block_id and t.status = 'published' and t.deleted = false
   ));
 create policy "settings_read" on settings for select using (true);
+
+create policy "entity_factions_read_published" on entity_factions
+  for select using (
+    exists (select 1 from entities p where p.id = entity_id and p.status = 'published' and p.deleted = false)
+    and exists (select 1 from entities f where f.id = faction_id and f.status = 'published' and f.deleted = false)
+  );
+create policy "person_relations_read_published" on person_relations
+  for select using (
+    exists (select 1 from entities a where a.id = from_id and a.status = 'published' and a.deleted = false)
+    and exists (select 1 from entities b where b.id = to_id and b.status = 'published' and b.deleted = false)
+  );
+create policy "text_entity_associations_read_published" on text_entity_associations
+  for select using (
+    exists (select 1 from text_entries t where t.id = entry_id and t.status = 'published' and t.deleted = false)
+    and exists (select 1 from entities e where e.id = target_id and e.status = 'published' and e.deleted = false)
+  );
 
 -- 默认站点设置
 insert into settings (key, value) values ('site_name', '游戏资料库') on conflict (key) do nothing;
