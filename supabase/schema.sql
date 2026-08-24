@@ -66,17 +66,6 @@ create table person_relations (
 create index idx_person_relations_from on person_relations (from_id, ordinal);
 create index idx_person_relations_to on person_relations (to_id, ordinal);
 
-create table text_entity_associations (
-  id        uuid primary key default gen_random_uuid(),
-  entry_id  uuid not null references text_entries(id) on delete cascade,
-  target_id uuid not null references entities(id) on delete cascade,
-  note      text not null default '',
-  ordinal   integer not null default 0
-);
-
-create index idx_text_entity_assoc_entry on text_entity_associations (entry_id, ordinal);
-create index idx_text_entity_assoc_target on text_entity_associations (target_id);
-
 create table text_entries (
   id                uuid primary key default gen_random_uuid(),
   slug              text not null unique,
@@ -118,6 +107,17 @@ create table content_links (
 
 create index idx_content_links_target on content_links (target_kind, target_id);
 create index idx_content_links_block on content_links (block_id);
+
+create table text_entity_associations (
+  id        uuid primary key default gen_random_uuid(),
+  entry_id  uuid not null references text_entries(id) on delete cascade,
+  target_id uuid not null references entities(id) on delete cascade,
+  note      text not null default '',
+  ordinal   integer not null default 0
+);
+
+create index idx_text_entity_assoc_entry on text_entity_associations (entry_id, ordinal);
+create index idx_text_entity_assoc_target on text_entity_associations (target_id);
 
 -- 行级安全：公开只读已发布内容，写入仅允许服务端
 alter table entities enable row level security;
