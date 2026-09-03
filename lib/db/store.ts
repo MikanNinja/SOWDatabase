@@ -59,7 +59,6 @@ export interface RelationWithEntity {
 
 export interface TextAssociationInput {
   targetId: string
-  note?: string
 }
 
 /** 整篇级关联的文本条目（用于实体页"长篇资料"区） */
@@ -71,7 +70,6 @@ export interface WholeEntryText {
   sourceCategory: string
   sourceName: string
   ingameLocation: string
-  note: string
   ordinal: number
 }
 
@@ -85,6 +83,22 @@ export interface EntityInput {
   race?: string
   /** 地点/势力专属：上级实体 id */
   parentId?: string | null
+  /** 人物专属：出生年/月/日与约数 */
+  birthYear?: number | null
+  birthMonth?: number | null
+  birthDay?: number | null
+  birthCirca?: boolean
+  /** 人物专属：死亡年/月/日与约数 */
+  deathYear?: number | null
+  deathMonth?: number | null
+  deathDay?: number | null
+  deathCirca?: boolean
+  /** 人物专属：出生于（关联地点 id + 自由文本兜底） */
+  birthPlaceId?: string | null
+  birthPlaceFree?: string
+  /** 人物专属：死亡于（关联地点 id + 自由文本兜底） */
+  deathPlaceId?: string | null
+  deathPlaceFree?: string
   /** 人物专属：所属势力列表 */
   factions?: FactionInput[]
   status?: ContentStatus
@@ -98,7 +112,6 @@ export interface TextEntryInput {
   sourceCategory: string
   sourceName: string
   ingameLocation: string
-  triggerCondition: string
   note: string
   body: string
   status: ContentStatus

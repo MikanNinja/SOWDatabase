@@ -27,6 +27,30 @@ export interface Entity {
   race?: string
   /** 地点/势力专属：上级实体的稳定标识，单值，构成单父树 */
   parentId?: string | null
+  /** 人物专属：出生年（架空纪年，可空） */
+  birthYear?: number | null
+  /** 人物专属：出生月 1–12（可空） */
+  birthMonth?: number | null
+  /** 人物专属：出生日 1–31（可空） */
+  birthDay?: number | null
+  /** 人物专属：出生日期是否为约数 */
+  birthCirca?: boolean
+  /** 人物专属：死亡年（可空） */
+  deathYear?: number | null
+  /** 人物专属：死亡月 1–12（可空） */
+  deathMonth?: number | null
+  /** 人物专属：死亡日 1–31（可空） */
+  deathDay?: number | null
+  /** 人物专属：死亡日期是否为约数 */
+  deathCirca?: boolean
+  /** 人物专属：出生于——关联地点实体 id（可空） */
+  birthPlaceId?: string | null
+  /** 人物专属：出生于——自由文本兜底（关联不上地点实体时） */
+  birthPlaceFree?: string
+  /** 人物专属：死亡于——关联地点实体 id（可空） */
+  deathPlaceId?: string | null
+  /** 人物专属：死亡于——自由文本兜底（关联不上地点实体时） */
+  deathPlaceFree?: string
   status: ContentStatus
   aliases: string[]
   createdAt: string
@@ -69,8 +93,6 @@ export interface TextEntityAssociation {
   entryId: string
   /** 目标实体 id（人物/地点/势力） */
   targetId: string
-  /** 备注，可留空 */
-  note: string
   /** 展示排序 */
   ordinal: number
 }
@@ -82,7 +104,6 @@ export interface TextEntry {
   sourceCategory: string
   sourceName: string
   ingameLocation: string
-  triggerCondition: string
   note: string
   body: string
   status: ContentStatus

@@ -40,6 +40,7 @@ export default async function EditEntityPage(props: {
     .filter((e) => e.type === "faction")
     .map((e) => ({ id: e.id, name: e.name, aliases: e.aliases }))
   const availableParents = allEntities.filter((e) => e.type === "place" || e.type === "faction")
+  const availablePlaces = allEntities.filter((e) => e.type === "place")
 
   // v2：加载层级信息用于后台展示
   const ancestors = entity.parentId ? await store.getEntityAncestors(entity.id) : []
@@ -66,6 +67,7 @@ export default async function EditEntityPage(props: {
         entity={entity}
         availableFactions={availableFactions}
         availableParents={availableParents}
+        availablePlaces={availablePlaces}
         currentFactions={currentFactions}
       />
 

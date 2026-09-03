@@ -17,6 +17,7 @@ export default async function NewEntityPage(props: {
     .filter((e) => e.type === "faction")
     .map((e) => ({ id: e.id, name: e.name, aliases: e.aliases }))
   const availableParents = allEntities.filter((e) => e.type === "place" || e.type === "faction")
+  const availablePlaces = allEntities.filter((e) => e.type === "place")
 
   return (
     <div>
@@ -28,6 +29,7 @@ export default async function NewEntityPage(props: {
         defaultType={defaultType}
         availableFactions={availableFactions}
         availableParents={availableParents}
+        availablePlaces={availablePlaces}
       />
     </div>
   )

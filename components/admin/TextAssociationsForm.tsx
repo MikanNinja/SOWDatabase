@@ -6,7 +6,6 @@ import { saveTextAssociationsAction } from "@/app/admin/actions"
 
 interface AssociationRow {
   targetId: string
-  note: string
 }
 
 interface EntityOption {
@@ -26,24 +25,22 @@ export default function TextAssociationsForm({
   currentAssociations: TextEntityAssociation[]
 }) {
   const [rows, setRows] = useState<AssociationRow[]>(
-    currentAssociations.map((a) => ({ targetId: a.targetId, note: a.note }))
+    currentAssociations.map((a) => ({ targetId: a.targetId }))
   )
 
   function addRow() {
-    setRows((prev) => [...prev, { targetId: "", note: "" }])
+    setRows((prev) => [...prev, { targetId: "" }])
   }
   function removeRow(index: number) {
     setRows((prev) => prev.filter((_, i) => i !== index))
   }
-  function updateRow(index: number, field: "targetId" | "note", value: string) {
+  function updateRow(index: number, field: "targetId", value: string) {
     setRows((prev) =>
       prev.map((row, i) => (i === index ? { ...row, [field]: value } : row))
     )
   }
 
-  const associationsJson = JSON.stringify(
-    rows.filter((r) => r.targetId).map((r) => ({ targetId: r.targetId, note: r.note }))
-  )
+  const associationsJson = JSON.stringify(rows.filter((r) => r.targetId).map((r) => ({ targetId: r.targetId })))
 
   return (
     <form action={saveTextAssociationsAction} className="form-grid">
@@ -74,13 +71,6 @@ export default function TextAssociationsForm({
                 </optgroup>
               ))}
             </select>
-            <input
-              type="text"
-              value={row.note}
-              onChange={(e) => updateRow(index, "note", e.target.value)}
-              placeholder="备注（如：通篇背景为该势力活动区域）"
-              aria-label={`备注 ${index + 1}`}
-            />
             <button
               type="button"
               className="btn small danger"

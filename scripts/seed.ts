@@ -154,7 +154,6 @@ async function main() {
     sourceCategory: "世界探索",
     sourceName: "白潮港",
     ingameLocation: "白潮港西侧栈桥，第一次进入港口后的夜晚，调查尽头的湿脚印",
-    triggerCondition: "夜间进入西侧栈桥",
     note: "",
     body: `栈桥尽头留着一串没有被潮水冲散的湿脚印。
 
@@ -169,7 +168,6 @@ async function main() {
     sourceCategory: "角色信息",
     sourceName: "阿澜",
     ingameLocation: "白潮港测潮塔二层，阿澜的工作日志，第三页",
-    triggerCondition: "取得测潮塔钥匙后阅读日志",
     note: "",
     body: `第七日，雾潮比往常提前了两个时辰。
 
@@ -184,7 +182,6 @@ async function main() {
     sourceCategory: "主线任务",
     sourceName: "北方灯塔",
     ingameLocation: "灰烬台地北侧灯塔入口，任务“雾中的火种”开始后阅读木牌",
-    triggerCondition: "接受任务“雾中的火种”",
     note: "",
     body: `第一条：雾火熄灭后，任何人不得独自进入灯塔底层。
 
@@ -197,7 +194,6 @@ async function main() {
     sourceCategory: "世界探索",
     sourceName: "灰烬台地",
     ingameLocation: "灰烬台地东南坡，倒塌灯塔后的黑色石板",
-    triggerCondition: "获得“碎裂的灯芯”后调查石板",
     note: "",
     body: `石板上只剩下半句话：
 
@@ -211,7 +207,6 @@ async function main() {
     sourceCategory: "主线任务",
     sourceName: "潮汐议会",
     ingameLocation: "白潮港测潮塔一层公告板，进入测潮塔后可阅读",
-    triggerCondition: "取得测潮塔进入许可",
     note: "v2 测试：整篇关联——整篇关联到潮汐议会，无段落级 [[...]] 链接。",
     body: `第一条：所有测潮师须于每日卯时与酉时各记录一次雾潮方向与浓度。
 
@@ -249,11 +244,11 @@ async function main() {
   // v2：整篇级关联
   // T-005 测潮条例 → 潮汐议会（仅整篇关联，无段落级关联）
   await store.setTextEntityAssociations(t5.entry.id, [
-    { targetId: chaoxiyihui.id, note: "通篇为潮汐议会的测潮规章" },
+    { targetId: chaoxiyihui.id },
   ])
   // T-002 测潮记录 → 潮汐议会（同时有段落级关联和整篇关联，展示折叠）
   await store.setTextEntityAssociations(t2.entry.id, [
-    { targetId: chaoxiyihui.id, note: "通篇背景为潮汐议会的测潮工作" },
+    { targetId: chaoxiyihui.id },
   ])
 
   console.log("种子数据已写入（含 v2 扩展）。")

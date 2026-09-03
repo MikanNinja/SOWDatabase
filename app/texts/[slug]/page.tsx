@@ -44,7 +44,6 @@ export default async function TextDetailPage(props: {
     ["来源类别", entry.sourceCategory],
     ["来源名称", entry.sourceName],
     ["游戏内定位", entry.ingameLocation],
-    ["触发条件", entry.triggerCondition],
     ["补充说明", entry.note],
   ].filter(([, value]) => value !== "") as [string, string | React.ReactNode][]
 

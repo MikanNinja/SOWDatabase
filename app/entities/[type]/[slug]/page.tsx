@@ -15,6 +15,21 @@ function decodeSlug(value: string): string {
   }
 }
 
+/** 将不全的年月日拼成展示串；约数加“约”前缀；全空返回空串 */
+function formatPartialDate(d: {
+  year: number | null | undefined
+  month: number | null | undefined
+  day: number | null | undefined
+  circa: boolean | undefined
+}): string {
+  const parts: string[] = []
+  if (d.year != null) parts.push(`${d.year}年`)
+  if (d.month != null) parts.push(`${d.month}月`)
+  if (d.day != null) parts.push(`${d.day}日`)
+  if (parts.length === 0) return ""
+  return d.circa ? `约 ${parts.join("")}` : parts.join("")
+}
+
 export default async function EntityDetailPage(props: {
   params: Promise<{ type: string; slug: string }>
 }) {
@@ -93,6 +108,16 @@ export default async function EntityDetailPage(props: {
     { label: entity.name },
   ]
 
+  // v3：出生地/死亡地关联实体（已发布才显示链接，否则回退自由文本）
+  const birthPlace =
+    entity.birthPlaceId && entity.type === "person"
+      ? await store.getEntityById(entity.birthPlaceId)
+      : null
+  const deathPlace =
+    entity.deathPlaceId && entity.type === "person"
+      ? await store.getEntityById(entity.deathPlaceId)
+      : null
+
   // 元信息表行（按实体类型条件渲染）
   type MetaRow = { label: string; value: React.ReactNode }
   const metaRows: MetaRow[] = []
@@ -116,6 +141,41 @@ export default async function EntityDetailPage(props: {
           </span>
         )),
       })
+    }
+
+    const birthDate = formatPartialDate({
+      year: entity.birthYear,
+      month: entity.birthMonth,
+      day: entity.birthDay,
+      circa: entity.birthCirca,
+    })
+    if (birthDate) {
+      metaRows.push({ label: "出生日期", value: birthDate })
+    }
+    const deathDate = formatPartialDate({
+      year: entity.deathYear,
+      month: entity.deathMonth,
+      day: entity.deathDay,
+      circa: entity.deathCirca,
+    })
+    if (deathDate) {
+      metaRows.push({ label: "死亡日期", value: deathDate })
+    }
+    if (entity.birthPlaceId && birthPlace && birthPlace.status === "published") {
+      metaRows.push({
+        label: "出生于",
+        value: <Link href={`/entities/place/${birthPlace.slug}`}>{birthPlace.name}</Link>,
+      })
+    } else if (entity.birthPlaceFree) {
+      metaRows.push({ label: "出生于", value: entity.birthPlaceFree })
+    }
+    if (entity.deathPlaceId && deathPlace && deathPlace.status === "published") {
+      metaRows.push({
+        label: "死亡于",
+        value: <Link href={`/entities/place/${deathPlace.slug}`}>{deathPlace.name}</Link>,
+      })
+    } else if (entity.deathPlaceFree) {
+      metaRows.push({ label: "死亡于", value: entity.deathPlaceFree })
     }
   }
 
@@ -218,7 +278,6 @@ export default async function EntityDetailPage(props: {
                 <tr>
                   <th scope="col">文本</th>
                   <th scope="col">来源与定位</th>
-                  <th scope="col">备注</th>
                 </tr>
               </thead>
               <tbody>
@@ -232,7 +291,6 @@ export default async function EntityDetailPage(props: {
                       {item.sourceName ? ` · ${item.sourceName}` : ""}
                       {item.ingameLocation ? <div className="item-meta">{item.ingameLocation}</div> : null}
                     </td>
-                    <td>{item.note || <span className="muted">—</span>}</td>
                   </tr>
                 ))}
               </tbody>

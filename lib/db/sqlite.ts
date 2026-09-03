@@ -44,6 +44,18 @@ type EntityRow = {
   note: string
   race: string
   parent_id: string | null
+  birth_year: number | null
+  birth_month: number | null
+  birth_day: number | null
+  birth_circa: number
+  death_year: number | null
+  death_month: number | null
+  death_day: number | null
+  death_circa: number
+  birth_place_id: string | null
+  birth_place_free: string
+  death_place_id: string | null
+  death_place_free: string
   status: ContentStatus
   created_at: string
   updated_at: string
@@ -57,7 +69,6 @@ type TextEntryRow = {
   source_category: string
   source_name: string
   ingame_location: string
-  trigger_condition: string
   note: string
   body: string
   status: ContentStatus
@@ -113,6 +124,26 @@ export class SQLiteStore implements Store {
       if (!colNames.has("parent_id")) {
         this.db.exec("ALTER TABLE entities ADD COLUMN parent_id TEXT")
       }
+      // v3：人物生卒字段（年/月/日可空，circa 默认0，place_free 默认空串）
+      const newCols: Record<string, string> = {
+        birth_year: "INTEGER",
+        birth_month: "INTEGER",
+        birth_day: "INTEGER",
+        birth_circa: "INTEGER NOT NULL DEFAULT 0",
+        death_year: "INTEGER",
+        death_month: "INTEGER",
+        death_day: "INTEGER",
+        death_circa: "INTEGER NOT NULL DEFAULT 0",
+        birth_place_id: "TEXT",
+        birth_place_free: "TEXT NOT NULL DEFAULT ''",
+        death_place_id: "TEXT",
+        death_place_free: "TEXT NOT NULL DEFAULT ''",
+      }
+      for (const [col, def] of Object.entries(newCols)) {
+        if (!colNames.has(col)) {
+          this.db.exec(`ALTER TABLE entities ADD COLUMN ${col} ${def}`)
+        }
+      }
     }
     this.db.exec(SQLITE_SCHEMA)
   }
@@ -141,6 +172,18 @@ export class SQLiteStore implements Store {
       note: row.note,
       race: row.race ?? "",
       parentId: row.parent_id ?? null,
+      birthYear: row.birth_year ?? null,
+      birthMonth: row.birth_month ?? null,
+      birthDay: row.birth_day ?? null,
+      birthCirca: row.birth_circa ? true : false,
+      deathYear: row.death_year ?? null,
+      deathMonth: row.death_month ?? null,
+      deathDay: row.death_day ?? null,
+      deathCirca: row.death_circa ? true : false,
+      birthPlaceId: row.birth_place_id ?? null,
+      birthPlaceFree: row.birth_place_free ?? "",
+      deathPlaceId: row.death_place_id ?? null,
+      deathPlaceFree: row.death_place_free ?? "",
       status: row.status,
       aliases,
       createdAt: row.created_at,
@@ -156,7 +199,6 @@ export class SQLiteStore implements Store {
       sourceCategory: row.source_category,
       sourceName: row.source_name,
       ingameLocation: row.ingame_location,
-      triggerCondition: row.trigger_condition,
       note: row.note,
       body: row.body,
       status: row.status,
@@ -354,6 +396,19 @@ export class SQLiteStore implements Store {
     const status = input.status ?? "draft"
     const race = (input.race ?? "").trim()
     const parentId = input.parentId ? input.parentId.trim() || null : null
+    const toInt = (v: number | null | undefined) => (v == null || Number.isNaN(v) ? null : Math.trunc(v))
+    const birthYear = toInt(input.birthYear)
+    const birthMonth = toInt(input.birthMonth)
+    const birthDay = toInt(input.birthDay)
+    const birthCirca = input.birthCirca ? 1 : 0
+    const deathYear = toInt(input.deathYear)
+    const deathMonth = toInt(input.deathMonth)
+    const deathDay = toInt(input.deathDay)
+    const deathCirca = input.deathCirca ? 1 : 0
+    const birthPlaceId = input.birthPlaceId ? input.birthPlaceId.trim() || null : null
+    const birthPlaceFree = (input.birthPlaceFree ?? "").trim()
+    const deathPlaceId = input.deathPlaceId ? input.deathPlaceId.trim() || null : null
+    const deathPlaceFree = (input.deathPlaceFree ?? "").trim()
 
     // 校验父级：同类型、未删除、无环
     if (parentId) {
@@ -362,8 +417,11 @@ export class SQLiteStore implements Store {
 
     this.db
       .prepare(
-        `INSERT INTO entities (id, slug, type, name, intro, note, race, parent_id, status, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO entities (id, slug, type, name, intro, note, race, parent_id,
+           birth_year, birth_month, birth_day, birth_circa, death_year, death_month, death_day, death_circa,
+           birth_place_id, birth_place_free, death_place_id, death_place_free,
+           status, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         id,
@@ -374,6 +432,18 @@ export class SQLiteStore implements Store {
         input.note ?? "",
         race,
         parentId,
+        birthYear,
+        birthMonth,
+        birthDay,
+        birthCirca,
+        deathYear,
+        deathMonth,
+        deathDay,
+        deathCirca,
+        birthPlaceId,
+        birthPlaceFree,
+        deathPlaceId,
+        deathPlaceFree,
         status,
         now,
         now
@@ -397,6 +467,19 @@ export class SQLiteStore implements Store {
     const aliases = linesToList((input.aliases ?? []).join("\n"))
     const race = (input.race ?? "").trim()
     const parentId = input.parentId ? input.parentId.trim() || null : null
+    const toInt = (v: number | null | undefined) => (v == null || Number.isNaN(v) ? null : Math.trunc(v))
+    const birthYear = toInt(input.birthYear)
+    const birthMonth = toInt(input.birthMonth)
+    const birthDay = toInt(input.birthDay)
+    const birthCirca = input.birthCirca ? 1 : 0
+    const deathYear = toInt(input.deathYear)
+    const deathMonth = toInt(input.deathMonth)
+    const deathDay = toInt(input.deathDay)
+    const deathCirca = input.deathCirca ? 1 : 0
+    const birthPlaceId = input.birthPlaceId ? input.birthPlaceId.trim() || null : null
+    const birthPlaceFree = (input.birthPlaceFree ?? "").trim()
+    const deathPlaceId = input.deathPlaceId ? input.deathPlaceId.trim() || null : null
+    const deathPlaceFree = (input.deathPlaceFree ?? "").trim()
 
     let finalAliases = aliases
     if (input.keepOldNameAsAlias && newName !== existing.name) {
@@ -410,7 +493,10 @@ export class SQLiteStore implements Store {
 
     this.db
       .prepare(
-        `UPDATE entities SET slug = ?, type = ?, name = ?, intro = ?, note = ?, race = ?, parent_id = ?, status = ?, updated_at = ? WHERE id = ?`
+        `UPDATE entities SET slug = ?, type = ?, name = ?, intro = ?, note = ?, race = ?, parent_id = ?,
+           birth_year = ?, birth_month = ?, birth_day = ?, birth_circa = ?, death_year = ?, death_month = ?, death_day = ?, death_circa = ?,
+           birth_place_id = ?, birth_place_free = ?, death_place_id = ?, death_place_free = ?,
+           status = ?, updated_at = ? WHERE id = ?`
       )
       .run(
         slug,
@@ -420,6 +506,18 @@ export class SQLiteStore implements Store {
         input.note ?? "",
         race,
         parentId,
+        birthYear,
+        birthMonth,
+        birthDay,
+        birthCirca,
+        deathYear,
+        deathMonth,
+        deathDay,
+        deathCirca,
+        birthPlaceId,
+        birthPlaceFree,
+        deathPlaceId,
+        deathPlaceFree,
         input.status ?? existing.status,
         now,
         id
@@ -710,20 +808,19 @@ export class SQLiteStore implements Store {
   async getTextEntityAssociations(entryId: string): Promise<TextEntityAssociation[]> {
     const rows = this.db
       .prepare(
-        `SELECT tea.id, tea.entry_id, tea.target_id, tea.note, tea.ordinal
+        `SELECT tea.id, tea.entry_id, tea.target_id, tea.ordinal
          FROM text_entity_associations tea
          JOIN entities e ON e.id = tea.target_id AND e.deleted = 0
          WHERE tea.entry_id = ?
          ORDER BY tea.ordinal`
       )
       .all(entryId) as {
-      id: string; entry_id: string; target_id: string; note: string; ordinal: number
+      id: string; entry_id: string; target_id: string; ordinal: number
     }[]
     return rows.map((r) => ({
       id: r.id,
       entryId: r.entry_id,
       targetId: r.target_id,
-      note: r.note,
       ordinal: r.ordinal,
     }))
   }
@@ -731,18 +828,18 @@ export class SQLiteStore implements Store {
   async setTextEntityAssociations(entryId: string, associations: TextAssociationInput[]): Promise<void> {
     this.db.prepare("DELETE FROM text_entity_associations WHERE entry_id = ?").run(entryId)
     const insert = this.db.prepare(
-      "INSERT INTO text_entity_associations (id, entry_id, target_id, note, ordinal) VALUES (?, ?, ?, ?, ?)"
+      "INSERT INTO text_entity_associations (id, entry_id, target_id, ordinal) VALUES (?, ?, ?, ?)"
     )
     for (let i = 0; i < associations.length; i++) {
       const a = associations[i]
-      insert.run(newId(), entryId, a.targetId, (a.note ?? "").trim(), i)
+      insert.run(newId(), entryId, a.targetId, i)
     }
   }
 
   async getWholeEntryTextsForEntity(entityId: string): Promise<WholeEntryText[]> {
     const rows = this.db
       .prepare(
-        `SELECT tea.id AS association_id, tea.note, tea.ordinal,
+        `SELECT tea.id AS association_id, tea.ordinal,
                 t.id AS entry_id, t.slug AS entry_slug, t.title AS entry_title,
                 t.source_category, t.source_name, t.ingame_location
          FROM text_entity_associations tea
@@ -751,7 +848,7 @@ export class SQLiteStore implements Store {
          ORDER BY tea.ordinal, t.title COLLATE NOCASE`
       )
       .all(entityId) as {
-      association_id: string; note: string; ordinal: number;
+      association_id: string; ordinal: number;
       entry_id: string; entry_slug: string; entry_title: string;
       source_category: string; source_name: string; ingame_location: string
     }[]
@@ -763,7 +860,6 @@ export class SQLiteStore implements Store {
       sourceCategory: r.source_category,
       sourceName: r.source_name,
       ingameLocation: r.ingame_location,
-      note: r.note,
       ordinal: r.ordinal,
     }))
   }
@@ -941,7 +1037,7 @@ export class SQLiteStore implements Store {
       this.db
         .prepare(
           `UPDATE text_entries SET slug = ?, title = ?, source_category = ?, source_name = ?,
-             ingame_location = ?, trigger_condition = ?, note = ?, body = ?, status = ?, updated_at = ?
+             ingame_location = ?, note = ?, body = ?, status = ?, updated_at = ?
            WHERE id = ?`
         )
         .run(
@@ -950,7 +1046,6 @@ export class SQLiteStore implements Store {
           input.sourceCategory,
           input.sourceName,
           input.ingameLocation,
-          input.triggerCondition,
           input.note,
           input.body,
           input.status,
@@ -962,8 +1057,8 @@ export class SQLiteStore implements Store {
       this.db
         .prepare(
           `INSERT INTO text_entries (id, slug, title, source_category, source_name,
-             ingame_location, trigger_condition, note, body, status, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+             ingame_location, note, body, status, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         )
         .run(
           entryId,
@@ -972,7 +1067,6 @@ export class SQLiteStore implements Store {
           input.sourceCategory,
           input.sourceName,
           input.ingameLocation,
-          input.triggerCondition,
           input.note,
           input.body,
           input.status,
@@ -1178,12 +1272,11 @@ export class SQLiteStore implements Store {
     }))
     const assocRows = this.db
       .prepare("SELECT * FROM text_entity_associations ORDER BY entry_id, ordinal")
-      .all() as { id: string; entry_id: string; target_id: string; note: string; ordinal: number }[]
+      .all() as { id: string; entry_id: string; target_id: string; ordinal: number }[]
     const textEntityAssociations: TextEntityAssociation[] = assocRows.map((r) => ({
       id: r.id,
       entryId: r.entry_id,
       targetId: r.target_id,
-      note: r.note,
       ordinal: r.ordinal,
     }))
     return {

@@ -65,6 +65,28 @@ export async function saveEntityAction(formData: FormData) {
   if (!name) throw new Error("名称不能为空")
   if (!["person", "place", "faction"].includes(type)) throw new Error("实体类型不合法")
 
+  // 人物生卒字段（仅 person 有值；其他类型留空/空串不影响）
+  const toInt = (raw: string): number | null => {
+    const t = raw.trim()
+    if (!t) return null
+    const n = Number(t)
+    return Number.isNaN(n) ? null : Math.trunc(n)
+  }
+  const birthYear = toInt(String(formData.get("birthYear") ?? ""))
+  const birthMonth = toInt(String(formData.get("birthMonth") ?? ""))
+  const birthDay = toInt(String(formData.get("birthDay") ?? ""))
+  const birthCirca = formData.get("birthCirca") === "on"
+  const deathYear = toInt(String(formData.get("deathYear") ?? ""))
+  const deathMonth = toInt(String(formData.get("deathMonth") ?? ""))
+  const deathDay = toInt(String(formData.get("deathDay") ?? ""))
+  const deathCirca = formData.get("deathCirca") === "on"
+  const birthPlaceIdRaw = String(formData.get("birthPlaceId") ?? "").trim()
+  const birthPlaceId = birthPlaceIdRaw || null
+  const birthPlaceFree = String(formData.get("birthPlaceFree") ?? "").trim()
+  const deathPlaceIdRaw = String(formData.get("deathPlaceId") ?? "").trim()
+  const deathPlaceId = deathPlaceIdRaw || null
+  const deathPlaceFree = String(formData.get("deathPlaceFree") ?? "").trim()
+
   const input = {
     slug: slug || undefined,
     type,
@@ -73,6 +95,18 @@ export async function saveEntityAction(formData: FormData) {
     note,
     race,
     parentId,
+    birthYear,
+    birthMonth,
+    birthDay,
+    birthCirca,
+    deathYear,
+    deathMonth,
+    deathDay,
+    deathCirca,
+    birthPlaceId,
+    birthPlaceFree,
+    deathPlaceId,
+    deathPlaceFree,
     factions,
     status,
     aliases,
@@ -110,7 +144,6 @@ export async function saveTextAction(formData: FormData) {
   const sourceCategory = String(formData.get("sourceCategory") ?? "").trim()
   const sourceName = String(formData.get("sourceName") ?? "").trim()
   const ingameLocation = String(formData.get("ingameLocation") ?? "").trim()
-  const triggerCondition = String(formData.get("triggerCondition") ?? "").trim()
   const note = String(formData.get("note") ?? "").trim()
   const body = String(formData.get("body") ?? "")
   const status = String(formData.get("status") ?? "draft") as ContentStatus
@@ -124,7 +157,6 @@ export async function saveTextAction(formData: FormData) {
     sourceCategory: sourceCategory || "其他",
     sourceName,
     ingameLocation,
-    triggerCondition,
     note,
     body,
     status,
@@ -228,15 +260,14 @@ export async function saveTextAssociationsAction(formData: FormData) {
 
   if (!entryId) throw new Error("文本条目 id 不能为空")
 
-  let associations: { targetId: string; note?: string }[] = []
+  let associations: { targetId: string }[] = []
   if (associationsRaw) {
     try {
       const parsed = JSON.parse(associationsRaw)
       if (Array.isArray(parsed)) {
         associations = parsed
-          .map((a: { targetId?: string; note?: string }) => ({
+          .map((a: { targetId?: string }) => ({
             targetId: String(a?.targetId ?? "").trim(),
-            note: a?.note ? String(a.note).trim() : "",
           }))
           .filter((a: { targetId: string }) => a.targetId)
       }

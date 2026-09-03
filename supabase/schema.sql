@@ -21,6 +21,18 @@ create table entities (
   note       text not null default '',
   race       text not null default '',
   parent_id  uuid,
+  birth_year        integer,
+  birth_month       integer check (birth_month is null or birth_month between 1 and 12),
+  birth_day         integer check (birth_day is null or birth_day between 1 and 31),
+  birth_circa       boolean not null default false,
+  death_year        integer,
+  death_month       integer check (death_month is null or death_month between 1 and 12),
+  death_day         integer check (death_day is null or death_day between 1 and 31),
+  death_circa       boolean not null default false,
+  birth_place_id    uuid,
+  birth_place_free  text not null default '',
+  death_place_id    uuid,
+  death_place_free  text not null default '',
   status     content_status not null default 'draft',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
@@ -29,6 +41,10 @@ create table entities (
 
 alter table entities add constraint entities_parent_fk
   foreign key (parent_id) references entities(id) on delete set null;
+alter table entities add constraint entities_birth_place_fk
+  foreign key (birth_place_id) references entities(id) on delete set null;
+alter table entities add constraint entities_death_place_fk
+  foreign key (death_place_id) references entities(id) on delete set null;
 
 create table entity_aliases (
   id        bigserial primary key,
@@ -40,6 +56,8 @@ create index idx_entity_aliases_alias on entity_aliases (alias);
 create index idx_entities_type on entities (type);
 create index idx_entities_status on entities (status);
 create index idx_entities_parent on entities (parent_id);
+create index idx_entities_birth_place on entities (birth_place_id);
+create index idx_entities_death_place on entities (death_place_id);
 
 create table entity_factions (
   id         uuid primary key default gen_random_uuid(),
@@ -73,7 +91,6 @@ create table text_entries (
   source_category   text not null default '其他',
   source_name       text not null default '',
   ingame_location   text not null default '',
-  trigger_condition text not null default '',
   note              text not null default '',
   body              text not null default '',
   status            content_status not null default 'draft',
@@ -112,7 +129,6 @@ create table text_entity_associations (
   id        uuid primary key default gen_random_uuid(),
   entry_id  uuid not null references text_entries(id) on delete cascade,
   target_id uuid not null references entities(id) on delete cascade,
-  note      text not null default '',
   ordinal   integer not null default 0
 );
 

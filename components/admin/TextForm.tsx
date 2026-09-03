@@ -47,15 +47,6 @@ export default function TextForm({
           <span className="hint">例如：区域、NPC、菜单路径、任务阶段等，用于读者回到游戏核对。</span>
         </div>
         <div className="form-field">
-          <label htmlFor="triggerCondition">触发条件</label>
-          <input
-            type="text"
-            id="triggerCondition"
-            name="triggerCondition"
-            defaultValue={entry?.triggerCondition ?? ""}
-          />
-        </div>
-        <div className="form-field">
           <label htmlFor="slug">链接地址标识（可选）</label>
           <input type="text" id="slug" name="slug" defaultValue={entry?.slug ?? ""} />
           <span className="hint">留空时根据标题自动生成。</span>

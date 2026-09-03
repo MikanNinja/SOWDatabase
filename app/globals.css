@@ -1158,3 +1158,53 @@ h3 {
   padding-top: 0.5rem;
   border-top: 1px solid var(--line-soft);
 }
+
+/* v3：人物生卒字段（出生/死亡） */
+
+.date-row {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+}
+
+.date-row input[type="number"] {
+  width: 5.5rem;
+  border: 1px solid var(--line);
+  border-radius: 0;
+  background: var(--paper-light);
+  padding: 0.36rem 0.5rem;
+  font-size: 0.92rem;
+}
+
+.date-sep {
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.checkbox-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--muted);
+  font-size: 0.84rem;
+  white-space: nowrap;
+  margin-left: 0.3rem;
+}
+
+.place-row {
+  display: flex;
+  gap: 0.4rem;
+  margin-top: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.place-row select,
+.place-row input[type="text"] {
+  flex: 1 1 12rem;
+  border: 1px solid var(--line);
+  border-radius: 0;
+  background: var(--paper-light);
+  padding: 0.36rem 0.5rem;
+  font-size: 0.92rem;
+}

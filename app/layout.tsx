@@ -3,6 +3,9 @@ import "./globals.css"
 import Header from "@/components/Header"
 import { getStore } from "@/lib/db/store"
 
+// 避免 schema 缓存未刷新导致构建失败（PGRST205）
+export const dynamic = "force-dynamic"
+
 export const metadata: Metadata = {
   title: {
     default: "游戏资料库",

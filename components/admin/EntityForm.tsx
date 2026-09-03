@@ -22,12 +22,14 @@ export default function EntityForm({
   defaultType,
   availableFactions,
   availableParents,
+  availablePlaces,
   currentFactions,
 }: {
   entity?: Entity | null
   defaultType?: string
   availableFactions: FactionOption[]
   availableParents: Entity[]
+  availablePlaces: Entity[]
   currentFactions?: EntityFaction[]
 }) {
   const editing = Boolean(entity)
@@ -158,6 +160,120 @@ export default function EntityForm({
               <button type="button" className="btn small" onClick={addFaction}>
                 + 添加势力
               </button>
+            </div>
+          </div>
+
+          <div className="form-field">
+            <label>出生</label>
+            <div className="date-row">
+              <input
+                type="number"
+                name="birthYear"
+                defaultValue={entity?.birthYear ?? ""}
+                placeholder="年"
+                aria-label="出生年"
+                min={0}
+              />
+              <span className="date-sep">年</span>
+              <input
+                type="number"
+                name="birthMonth"
+                defaultValue={entity?.birthMonth ?? ""}
+                placeholder="月"
+                aria-label="出生月"
+                min={1}
+                max={12}
+              />
+              <span className="date-sep">月</span>
+              <input
+                type="number"
+                name="birthDay"
+                defaultValue={entity?.birthDay ?? ""}
+                placeholder="日"
+                aria-label="出生日"
+                min={1}
+                max={31}
+              />
+              <span className="date-sep">日</span>
+              <label className="checkbox-inline">
+                <input type="checkbox" name="birthCirca" defaultChecked={entity?.birthCirca ?? false} />
+                约
+              </label>
+            </div>
+            <span className="hint">年/月/日不全可只填部分；勾选“约”表示年份为约数。</span>
+            <div className="place-row">
+              <select name="birthPlaceId" defaultValue={entity?.birthPlaceId ?? ""} aria-label="出生于（关联地点）">
+                <option value="">— 关联地点（可选） —</option>
+                {availablePlaces.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="text"
+                name="birthPlaceFree"
+                defaultValue={entity?.birthPlaceFree ?? ""}
+                placeholder="或填写自由文本（出生地模糊时）"
+                aria-label="出生于（自由文本）"
+              />
+            </div>
+          </div>
+
+          <div className="form-field">
+            <label>死亡</label>
+            <div className="date-row">
+              <input
+                type="number"
+                name="deathYear"
+                defaultValue={entity?.deathYear ?? ""}
+                placeholder="年"
+                aria-label="死亡年"
+                min={0}
+              />
+              <span className="date-sep">年</span>
+              <input
+                type="number"
+                name="deathMonth"
+                defaultValue={entity?.deathMonth ?? ""}
+                placeholder="月"
+                aria-label="死亡月"
+                min={1}
+                max={12}
+              />
+              <span className="date-sep">月</span>
+              <input
+                type="number"
+                name="deathDay"
+                defaultValue={entity?.deathDay ?? ""}
+                placeholder="日"
+                aria-label="死亡日"
+                min={1}
+                max={31}
+              />
+              <span className="date-sep">日</span>
+              <label className="checkbox-inline">
+                <input type="checkbox" name="deathCirca" defaultChecked={entity?.deathCirca ?? false} />
+                约
+              </label>
+            </div>
+            <span className="hint">仅对已故角色填写；年/月/日不全可只填部分。</span>
+            <div className="place-row">
+              <select name="deathPlaceId" defaultValue={entity?.deathPlaceId ?? ""} aria-label="死亡于（关联地点）">
+                <option value="">— 关联地点（可选） —</option>
+                {availablePlaces.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="text"
+                name="deathPlaceFree"
+                defaultValue={entity?.deathPlaceFree ?? ""}
+                placeholder="或填写自由文本（死亡地模糊时）"
+                aria-label="死亡于（自由文本）"
+              />
             </div>
           </div>
         </>

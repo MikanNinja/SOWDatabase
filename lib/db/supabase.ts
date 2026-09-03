@@ -56,6 +56,18 @@ type EntityRow = {
   note: string
   race: string | null
   parent_id: string | null
+  birth_year: number | null
+  birth_month: number | null
+  birth_day: number | null
+  birth_circa: boolean | null
+  death_year: number | null
+  death_month: number | null
+  death_day: number | null
+  death_circa: boolean | null
+  birth_place_id: string | null
+  birth_place_free: string | null
+  death_place_id: string | null
+  death_place_free: string | null
   status: Entity["status"]
   created_at: string
   updated_at: string
@@ -70,7 +82,6 @@ type TextEntryRow = {
   source_category: string
   source_name: string
   ingame_location: string
-  trigger_condition: string
   note: string
   body: string
   status: TextEntry["status"]
@@ -129,6 +140,18 @@ export class SupabaseStore implements Store {
       note: row.note,
       race: row.race ?? "",
       parentId: row.parent_id ?? null,
+      birthYear: row.birth_year ?? null,
+      birthMonth: row.birth_month ?? null,
+      birthDay: row.birth_day ?? null,
+      birthCirca: row.birth_circa ?? false,
+      deathYear: row.death_year ?? null,
+      deathMonth: row.death_month ?? null,
+      deathDay: row.death_day ?? null,
+      deathCirca: row.death_circa ?? false,
+      birthPlaceId: row.birth_place_id ?? null,
+      birthPlaceFree: row.birth_place_free ?? "",
+      deathPlaceId: row.death_place_id ?? null,
+      deathPlaceFree: row.death_place_free ?? "",
       status: row.status,
       aliases: (row.entity_aliases ?? []).map((a) => a.alias),
       createdAt: row.created_at,
@@ -144,7 +167,6 @@ export class SupabaseStore implements Store {
       sourceCategory: row.source_category,
       sourceName: row.source_name,
       ingameLocation: row.ingame_location,
-      triggerCondition: row.trigger_condition,
       note: row.note,
       body: row.body,
       status: row.status,
@@ -333,6 +355,19 @@ export class SupabaseStore implements Store {
     )
     const race = (input.race ?? "").trim()
     const parentId = input.parentId ? input.parentId.trim() || null : null
+    const toInt = (v: number | null | undefined) => (v == null || Number.isNaN(v) ? null : Math.trunc(v))
+    const birthYear = toInt(input.birthYear)
+    const birthMonth = toInt(input.birthMonth)
+    const birthDay = toInt(input.birthDay)
+    const birthCirca = input.birthCirca ?? false
+    const deathYear = toInt(input.deathYear)
+    const deathMonth = toInt(input.deathMonth)
+    const deathDay = toInt(input.deathDay)
+    const deathCirca = input.deathCirca ?? false
+    const birthPlaceId = input.birthPlaceId ? input.birthPlaceId.trim() || null : null
+    const birthPlaceFree = (input.birthPlaceFree ?? "").trim()
+    const deathPlaceId = input.deathPlaceId ? input.deathPlaceId.trim() || null : null
+    const deathPlaceFree = (input.deathPlaceFree ?? "").trim()
 
     if (parentId) {
       await this.validateParent(id, input.type, parentId)
@@ -347,6 +382,18 @@ export class SupabaseStore implements Store {
       note: input.note ?? "",
       race,
       parent_id: parentId,
+      birth_year: birthYear,
+      birth_month: birthMonth,
+      birth_day: birthDay,
+      birth_circa: birthCirca,
+      death_year: deathYear,
+      death_month: deathMonth,
+      death_day: deathDay,
+      death_circa: deathCirca,
+      birth_place_id: birthPlaceId,
+      birth_place_free: birthPlaceFree,
+      death_place_id: deathPlaceId,
+      death_place_free: deathPlaceFree,
       status: input.status ?? "draft",
     })
     if (error) throw error
@@ -367,6 +414,19 @@ export class SupabaseStore implements Store {
     const aliases = linesToList((input.aliases ?? []).join("\n"))
     const race = (input.race ?? "").trim()
     const parentId = input.parentId ? input.parentId.trim() || null : null
+    const toInt = (v: number | null | undefined) => (v == null || Number.isNaN(v) ? null : Math.trunc(v))
+    const birthYear = toInt(input.birthYear)
+    const birthMonth = toInt(input.birthMonth)
+    const birthDay = toInt(input.birthDay)
+    const birthCirca = input.birthCirca ?? false
+    const deathYear = toInt(input.deathYear)
+    const deathMonth = toInt(input.deathMonth)
+    const deathDay = toInt(input.deathDay)
+    const deathCirca = input.deathCirca ?? false
+    const birthPlaceId = input.birthPlaceId ? input.birthPlaceId.trim() || null : null
+    const birthPlaceFree = (input.birthPlaceFree ?? "").trim()
+    const deathPlaceId = input.deathPlaceId ? input.deathPlaceId.trim() || null : null
+    const deathPlaceFree = (input.deathPlaceFree ?? "").trim()
 
     let finalAliases = aliases
     if (input.keepOldNameAsAlias && input.name.trim() !== existing.name) {
@@ -387,6 +447,18 @@ export class SupabaseStore implements Store {
         note: input.note ?? "",
         race,
         parent_id: parentId,
+        birth_year: birthYear,
+        birth_month: birthMonth,
+        birth_day: birthDay,
+        birth_circa: birthCirca,
+        death_year: deathYear,
+        death_month: deathMonth,
+        death_day: deathDay,
+        death_circa: deathCirca,
+        birth_place_id: birthPlaceId,
+        birth_place_free: birthPlaceFree,
+        death_place_id: deathPlaceId,
+        death_place_free: deathPlaceFree,
         status: input.status ?? existing.status,
         updated_at: nowIso(),
       })
@@ -723,17 +795,16 @@ export class SupabaseStore implements Store {
   async getTextEntityAssociations(entryId: string): Promise<TextEntityAssociation[]> {
     const { data, error } = await this.supabase
       .from("text_entity_associations")
-      .select("id,entry_id,target_id,note,ordinal")
+      .select("id,entry_id,target_id,ordinal")
       .eq("entry_id", entryId)
       .order("ordinal")
     if (error) throw error
     return ((data ?? []) as {
-      id: string; entry_id: string; target_id: string; note: string; ordinal: number
+      id: string; entry_id: string; target_id: string; ordinal: number
     }[]).map((r) => ({
       id: r.id,
       entryId: r.entry_id,
       targetId: r.target_id,
-      note: r.note,
       ordinal: r.ordinal,
     }))
   }
@@ -746,7 +817,6 @@ export class SupabaseStore implements Store {
           id: newId(),
           entry_id: entryId,
           target_id: a.targetId,
-          note: (a.note ?? "").trim(),
           ordinal: i,
         }))
       )
@@ -756,12 +826,12 @@ export class SupabaseStore implements Store {
   async getWholeEntryTextsForEntity(entityId: string): Promise<WholeEntryText[]> {
     const { data: assocData, error: assocError } = await this.supabase
       .from("text_entity_associations")
-      .select("id,note,ordinal,entry_id")
+      .select("id,ordinal,entry_id")
       .eq("target_id", entityId)
       .order("ordinal")
     if (assocError) throw assocError
     const assocs = (assocData ?? []) as {
-      id: string; note: string; ordinal: number; entry_id: string
+      id: string; ordinal: number; entry_id: string
     }[]
     if (assocs.length === 0) return []
     const entryIds = assocs.map((a) => a.entry_id)
@@ -785,7 +855,6 @@ export class SupabaseStore implements Store {
         sourceCategory: entry.source_category,
         sourceName: entry.source_name,
         ingameLocation: entry.ingame_location,
-        note: a.note,
         ordinal: a.ordinal,
       })
     }
@@ -977,7 +1046,6 @@ export class SupabaseStore implements Store {
       source_category: input.sourceCategory || "其他",
       source_name: input.sourceName,
       ingame_location: input.ingameLocation,
-      trigger_condition: input.triggerCondition,
       note: input.note,
       body: input.body,
       status: input.status,
@@ -1240,12 +1308,11 @@ export class SupabaseStore implements Store {
       .order("entry_id")
       .order("ordinal")
     const textEntityAssociations: TextEntityAssociation[] = ((assocData ?? []) as {
-      id: string; entry_id: string; target_id: string; note: string; ordinal: number
+      id: string; entry_id: string; target_id: string; ordinal: number
     }[]).map((r) => ({
       id: r.id,
       entryId: r.entry_id,
       targetId: r.target_id,
-      note: r.note,
       ordinal: r.ordinal,
     }))
     return {
