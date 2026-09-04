@@ -1,6 +1,7 @@
 import Link from "next/link"
 import { getStore } from "@/lib/db/store"
 import { deleteTextAction, restoreTextAction } from "@/app/admin/actions"
+import SubmitButton from "@/components/admin/SubmitButton"
 
 export const dynamic = "force-dynamic"
 
@@ -68,12 +69,12 @@ export default async function AdminTextsPage(props: {
                   {deleted === "1" ? (
                     <form action={restoreTextAction}>
                       <input type="hidden" name="id" value={text.id} />
-                      <button type="submit" className="btn small">恢复</button>
+                      <SubmitButton className="btn small" pendingLabel="恢复中…">恢复</SubmitButton>
                     </form>
                   ) : (
                     <form action={deleteTextAction}>
                       <input type="hidden" name="id" value={text.id} />
-                      <button type="submit" className="btn small danger">删除</button>
+                      <SubmitButton className="btn small danger" pendingLabel="删除中…">删除</SubmitButton>
                     </form>
                   )}
                 </td>

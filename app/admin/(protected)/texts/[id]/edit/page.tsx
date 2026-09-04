@@ -7,6 +7,7 @@ import { renderEntryBlocks } from "@/lib/render"
 import { computeLinkIssues } from "@/lib/links"
 import { ENTITY_TYPE_LABELS } from "@/lib/db/types"
 import { setManualLinksAction, batchManualLinksAction } from "@/app/admin/actions"
+import SubmitButton from "@/components/admin/SubmitButton"
 
 export const dynamic = "force-dynamic"
 
@@ -113,7 +114,7 @@ export default async function EditTextPage(props: {
             </select>
           </div>
           <div className="form-actions">
-            <button type="submit" className="btn">添加到所有段落</button>
+            <SubmitButton className="btn" pendingLabel="添加中…">添加到所有段落</SubmitButton>
           </div>
         </form>
       </section>
@@ -166,7 +167,7 @@ export default async function EditTextPage(props: {
                         </fieldset>
                       ))}
                     </div>
-                    <button type="submit" className="btn small">保存本段关联</button>
+                    <SubmitButton className="btn small" pendingLabel="保存中…">保存本段关联</SubmitButton>
                   </details>
                 </form>
               </article>

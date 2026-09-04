@@ -3,6 +3,7 @@
 import { useState } from "react"
 import type { Entity, PersonRelation } from "@/lib/db/types"
 import { saveRelationAction, deleteRelationAction } from "@/app/admin/actions"
+import SubmitButton from "@/components/admin/SubmitButton"
 
 interface RelationDisplay {
   relation: PersonRelation
@@ -65,7 +66,7 @@ export default function PersonRelationsForm({
                 <form action={deleteRelationAction} style={{ display: "inline" }}>
                   <input type="hidden" name="id" value={r.relation.id} />
                   <input type="hidden" name="entityId" value={personId} />
-                  <button type="submit" className="btn small danger">删除</button>
+                  <SubmitButton className="btn small danger" pendingLabel="删除中…">删除</SubmitButton>
                 </form>
               </span>
             </li>
@@ -135,9 +136,7 @@ export default function PersonRelationsForm({
             />
           </div>
           <div className="form-actions">
-            <button type="submit" className="btn primary">
-              {editingId ? "保存修改" : "创建关系"}
-            </button>
+            <SubmitButton>{editingId ? "保存修改" : "创建关系"}</SubmitButton>
             <button type="button" className="btn" onClick={resetForm}>
               取消
             </button>

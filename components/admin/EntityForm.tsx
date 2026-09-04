@@ -5,6 +5,7 @@ import Link from "next/link"
 import { ENTITY_TYPE_LABELS, ENTITY_TYPES } from "@/lib/db/types"
 import type { Entity, EntityFaction } from "@/lib/db/types"
 import { saveEntityAction } from "@/app/admin/actions"
+import SubmitButton from "@/components/admin/SubmitButton"
 
 interface FactionOption {
   id: string
@@ -98,7 +99,7 @@ export default function EntityForm({
         </div>
         <div className="form-field">
           <label htmlFor="status">发布状态</label>
-          <select id="status" name="status" defaultValue={entity?.status ?? "draft"}>
+          <select id="status" name="status" defaultValue={entity?.status ?? "published"}>
             <option value="draft">草稿</option>
             <option value="published">已发布</option>
           </select>
@@ -328,9 +329,7 @@ export default function EntityForm({
         <textarea id="note" name="note" rows={4} defaultValue={entity?.note ?? ""} />
       </div>
       <div className="form-actions">
-        <button type="submit" className="btn primary">
-          {editing ? "保存修改" : "创建"}
-        </button>
+        <SubmitButton>{editing ? "保存修改" : "创建"}</SubmitButton>
         <Link href="/admin/entities" className="btn">
           取消
         </Link>

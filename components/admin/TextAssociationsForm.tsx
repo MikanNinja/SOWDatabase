@@ -3,6 +3,7 @@
 import { useState } from "react"
 import type { TextEntityAssociation } from "@/lib/db/types"
 import { saveTextAssociationsAction } from "@/app/admin/actions"
+import SubmitButton from "@/components/admin/SubmitButton"
 
 interface AssociationRow {
   targetId: string
@@ -85,7 +86,7 @@ export default function TextAssociationsForm({
         </button>
       </div>
       <div className="form-actions">
-        <button type="submit" className="btn primary">保存整篇关联</button>
+        <SubmitButton>保存整篇关联</SubmitButton>
       </div>
     </form>
   )

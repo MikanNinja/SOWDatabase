@@ -1,4 +1,5 @@
 import { loginAction } from "../actions"
+import SubmitButton from "@/components/admin/SubmitButton"
 
 export default async function LoginPage(props: {
   searchParams: Promise<{ error?: string; next?: string }>
@@ -31,9 +32,7 @@ function LoginForm({ nextPath }: { nextPath: string }) {
       </div>
       <input type="hidden" name="next" value={nextPath} />
       <div className="form-actions">
-        <button type="submit" className="btn primary">
-          登录
-        </button>
+        <SubmitButton pendingLabel="登录中…">登录</SubmitButton>
       </div>
     </form>
   )

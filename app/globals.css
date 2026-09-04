@@ -712,6 +712,22 @@ h3 {
   font-size: 0.8rem;
 }
 
+.btn[disabled],
+.btn[disabled]:hover {
+  opacity: 0.55;
+  cursor: not-allowed;
+  border-color: var(--line);
+  background: transparent;
+  color: var(--muted);
+}
+
+.btn.primary[disabled],
+.btn.primary[disabled]:hover {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--paper-light);
+}
+
 .badge {
   display: inline-block;
   border: 1px solid var(--line);

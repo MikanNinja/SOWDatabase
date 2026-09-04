@@ -1,5 +1,6 @@
 import { getStore } from "@/lib/db/store"
 import { updateSettingsAction } from "@/app/admin/actions"
+import SubmitButton from "@/components/admin/SubmitButton"
 
 export const dynamic = "force-dynamic"
 
@@ -33,9 +34,7 @@ export default async function AdminSettingsPage() {
           <p className="hint">显示在每页页脚的说明文字。</p>
         </div>
         <div className="form-actions">
-          <button type="submit" className="btn primary">
-            保存设置
-          </button>
+          <SubmitButton>保存设置</SubmitButton>
         </div>
       </form>
     </div>

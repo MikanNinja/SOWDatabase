@@ -1,6 +1,7 @@
 import Link from "next/link"
 import type { TextEntry } from "@/lib/db/types"
 import { saveTextAction } from "@/app/admin/actions"
+import SubmitButton from "@/components/admin/SubmitButton"
 
 const CATEGORY_OPTIONS = ["主线任务", "角色信息", "世界探索", "NPC 日常", "其他"]
 
@@ -53,7 +54,7 @@ export default function TextForm({
         </div>
         <div className="form-field">
           <label htmlFor="status">发布状态</label>
-          <select id="status" name="status" defaultValue={entry?.status ?? "draft"}>
+          <select id="status" name="status" defaultValue={entry?.status ?? "published"}>
             <option value="draft">草稿</option>
             <option value="published">已发布</option>
           </select>
@@ -82,9 +83,7 @@ export default function TextForm({
       </div>
 
       <div className="form-actions">
-        <button type="submit" className="btn primary">
-          {editing ? "保存修改" : "创建"}
-        </button>
+        <SubmitButton>{editing ? "保存修改" : "创建"}</SubmitButton>
         <Link href="/admin/texts" className="btn">取消</Link>
       </div>
     </form>

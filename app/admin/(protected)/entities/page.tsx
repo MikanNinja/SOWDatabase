@@ -2,6 +2,7 @@ import Link from "next/link"
 import { getStore } from "@/lib/db/store"
 import { ENTITY_TYPE_LABELS, ENTITY_TYPES } from "@/lib/db/types"
 import { deleteEntityAction, restoreEntityAction } from "@/app/admin/actions"
+import SubmitButton from "@/components/admin/SubmitButton"
 
 export const dynamic = "force-dynamic"
 
@@ -73,12 +74,12 @@ export default async function AdminEntitiesPage(props: {
                   {deleted === "1" ? (
                     <form action={restoreEntityAction}>
                       <input type="hidden" name="id" value={entity.id} />
-                      <button type="submit" className="btn small">恢复</button>
+                      <SubmitButton className="btn small" pendingLabel="恢复中…">恢复</SubmitButton>
                     </form>
                   ) : (
                     <form action={deleteEntityAction}>
                       <input type="hidden" name="id" value={entity.id} />
-                      <button type="submit" className="btn small danger">删除</button>
+                      <SubmitButton className="btn small danger" pendingLabel="删除中…">删除</SubmitButton>
                     </form>
                   )}
                 </td>

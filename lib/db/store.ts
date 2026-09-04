@@ -145,7 +145,7 @@ export interface Store {
   getFactionMembers(factionId: string): Promise<{ entity: Entity; role: string; ordinal: number }[]>
   // v2：层级——直接下级
   getEntityChildren(parentId: string, opts?: { status?: ContentStatus }): Promise<Entity[]>
-  // v2：层级——祖先链（从直接父级到根），用于面包屑；草稿/已删除父级在公开页跳过
+  // v2：层级——祖先链（从顶级到直接父级），用于面包屑与上级展示；草稿/已删除父级在公开页跳过
   getEntityAncestors(entityId: string, opts?: { publicOnly?: boolean }): Promise<Entity[]>
   // v2：层级——成环检测，返回 true 表示设置 parentId 会成环
   detectHierarchyCycle(entityId: string, candidateParentId: string): Promise<boolean>

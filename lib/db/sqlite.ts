@@ -644,16 +644,16 @@ export class SQLiteStore implements Store {
         .prepare("SELECT * FROM entities WHERE id = ? AND deleted = 0")
         .get(row.parent_id) as EntityRow | undefined
       if (!parentRow) break
-      if (opts.publicOnly && parentRow.status !== "published") {
-        // 草稿父级跳过，回退到再上级
-        currentId = parentRow.parent_id
-        continue
+      // 草稿父级不推入，但其祖先仍需继续向上收集
+      if (!(opts.publicOnly && parentRow.status !== "published")) {
+        const parentAliases = this.aliasesFor([parentRow.id]).get(parentRow.id) ?? []
+        chain.push(this.rowToEntity(parentRow, parentAliases))
       }
-      const parentAliases = this.aliasesFor([parentRow.id]).get(parentRow.id) ?? []
-      chain.push(this.rowToEntity(parentRow, parentAliases))
-      currentId = parentRow.parent_id
+      // 推进到父节点本身，下一轮才会推入父节点的父级（若跳到再上级会隔级丢失）
+      currentId = parentRow.id
     }
-    return chain
+    // 返回顺序：顶级 → 直接父级（与面包屑/上级展示的方向一致）
+    return chain.reverse()
   }
 
   async detectHierarchyCycle(entityId: string, candidateParentId: string): Promise<boolean> {

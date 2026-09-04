@@ -613,14 +613,15 @@ export class SupabaseStore implements Store {
         .maybeSingle()
       const parentRow = parentData as EntityRow | null
       if (!parentRow) break
-      if (opts.publicOnly && parentRow.status !== "published") {
-        currentId = parentRow.parent_id
-        continue
+      // 草稿父级不推入，但其祖先仍需继续向上收集
+      if (!(opts.publicOnly && parentRow.status !== "published")) {
+        chain.push(this.toEntity(parentRow))
       }
-      chain.push(this.toEntity(parentRow))
-      currentId = parentRow.parent_id
+      // 推进到父节点本身，下一轮才会推入父节点的父级（若跳到再上级会隔级丢失）
+      currentId = parentRow.id
     }
-    return chain
+    // 返回顺序：顶级 → 直接父级（与面包屑/上级展示的方向一致）
+    return chain.reverse()
   }
 
   async detectHierarchyCycle(entityId: string, candidateParentId: string): Promise<boolean> {
