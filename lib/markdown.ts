@@ -30,6 +30,11 @@ export function parseWikiRaw(raw: string): { target: string; display: string | n
   return { target, display }
 }
 
+export function linkDisplayFallback(display: string | null, target: string): string {
+  if (display) return display
+  return target.replace(/^文本:\s*/, "").trim() || target
+}
+
 export function extractWikiLinks(src: string): WikiLinkRaw[] {
   const out: WikiLinkRaw[] = []
   const re = /\[\[[^\[\]]+\]\]/g

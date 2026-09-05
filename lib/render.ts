@@ -1,4 +1,4 @@
-import { extractWikiLinks, renderMarkdown } from "./markdown"
+import { extractWikiLinks, linkDisplayFallback, renderMarkdown } from "./markdown"
 import type { BlockWithLinks } from "./db/store"
 import type { ContentLink, Entity, TextEntry } from "./db/types"
 import type { Store } from "./db/store"
@@ -46,9 +46,9 @@ export async function renderEntryBlocks(
       target: string
       display: string | null
     }): { ok: boolean; href?: string; display: string } => {
+      const fallback = linkDisplayFallback(link.display, link.target)
       const stored = inlineByRaw.get(link.raw)
-      if (!stored) return { ok: false, display: link.display ?? link.target }
-      const fallback = stored.displayText || link.display || link.target
+      if (!stored) return { ok: false, display: fallback }
       let href: string | null = null
       let published = false
       if (stored.targetKind === "entity") {
@@ -94,21 +94,18 @@ export async function renderMarkdownContent(
     if (!link.valid || !link.target) {
       resolved.set(link.raw, {
         ok: false,
-        display: (link.display ?? link.target) || link.raw,
+        display: linkDisplayFallback(link.display, link.target) || link.raw,
       })
       continue
     }
     let cands: { status: string; slug: string; label: string; kind: "entity" | "text"; type?: string }[] = []
-    let display = link.display
     if (link.kind === "text") {
       const title = link.target.replace(/^文本:\s*/, "").trim()
       cands = await store.findTextCandidates(title)
-      if (!display && cands[0]) display = cands[0].label
     } else {
       cands = await store.findEntityCandidates(link.target)
-      if (!display && cands[0]) display = cands[0].label
     }
-    const fallback = display ?? link.target
+    const fallback = linkDisplayFallback(link.display, link.target)
     if (cands.length === 1) {
       const c = cands[0]
       const href = c.kind === "entity" ? `/entities/${c.type}/${c.slug}` : `/texts/${c.slug}`

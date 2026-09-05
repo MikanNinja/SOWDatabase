@@ -29,7 +29,7 @@ import type {
   TextEntryInput,
   WholeEntryText,
 } from "./store"
-import { extractWikiLinks, splitBlocks } from "../markdown"
+import { extractWikiLinks, linkDisplayFallback, splitBlocks } from "../markdown"
 import { linesToList, newId, nowIso, slugify } from "../utils"
 
 function requireConfig(): { url: string; key: string } {
@@ -1049,7 +1049,7 @@ export class SupabaseStore implements Store {
               raw: link.raw,
               targetKind: "text",
               targetId: c.id,
-              displayText: link.display ?? c.label,
+              displayText: linkDisplayFallback(link.display, link.target),
             })
           }
         } else {
@@ -1065,7 +1065,7 @@ export class SupabaseStore implements Store {
               raw: link.raw,
               targetKind: "entity",
               targetId: c.id,
-              displayText: link.display ?? c.label,
+              displayText: linkDisplayFallback(link.display, link.target),
             })
           }
         }

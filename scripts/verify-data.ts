@@ -26,6 +26,25 @@ async function main() {
   console.log("T-001 渲染段落数:", rendered.length)
   const hasCustomLink = rendered.some((b) => b.html.includes("那个穿黑衣服的人"))
   console.log("T-001 自定义显示文字链接渲染:", hasCustomLink)
+  if (!hasCustomLink) throw new Error("自定义显示文字链接渲染失败")
+
+  const aliasEntry = texts.find((t) => t.title === "白潮港的测潮记录")
+  if (!aliasEntry) throw new Error("未找到别名测试文本")
+  const aliasBlocks = await store.getEntryBlocks(aliasEntry.id)
+  const aliasRendered = await renderEntryBlocks(store, aliasBlocks, { publicOnly: true })
+  const aliasAnchor = `<a href="/entities/person/${shenyan[0].slug}" class="wiki-link">夜渡者</a>`
+  const aliasAsTyped = aliasRendered.some((b) => b.html.includes(aliasAnchor))
+  console.log("T-002 别名链接按原文渲染（应为 true）:", aliasAsTyped)
+  if (!aliasAsTyped) throw new Error("别名渲染验证失败：[[夜渡者]] 应显示为“夜渡者”并链接到沈砚")
+  if (aliasRendered.some((b) => b.html.includes(">沈砚</a>"))) {
+    throw new Error("别名改写验证失败：渲染结果不应把别名替换为标准名“沈砚”")
+  }
+
+  const aliasStored = aliasBlocks.flatMap((b) => b.links).find((l) => l.raw === "[[夜渡者]]")
+  console.log("T-002 别名链接落库显示文字（应为 夜渡者）:", aliasStored?.displayText)
+  if (!aliasStored || aliasStored.displayText !== "夜渡者") {
+    throw new Error("落库显示文字验证失败：displayText 应保存原文“夜渡者”")
+  }
 
   const issues = await computeLinkIssues(store, textEntry.body)
   console.log("T-001 链接问题数（应为 0）:", issues.length)
@@ -40,6 +59,12 @@ async function main() {
 
   const introHtml = await renderMarkdownContent(store, "参见[[沈砚|黑衣人]]。", { publicOnly: true })
   console.log("实体简介渲染含自定义链接:", introHtml.includes("黑衣人"))
+
+  const aliasIntroHtml = await renderMarkdownContent(store, "参见[[夜渡者]]。", { publicOnly: true })
+  console.log("简介渲染别名按原文显示（应为 true）:", aliasIntroHtml.includes(">夜渡者</a>"))
+  if (!aliasIntroHtml.includes(">夜渡者</a>")) {
+    throw new Error("别名渲染验证失败：renderMarkdownContent 应按原文显示别名")
+  }
 
   // ========== v2 验证 ==========
 
