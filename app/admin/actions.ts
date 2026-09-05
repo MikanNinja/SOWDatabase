@@ -155,7 +155,7 @@ export async function saveTextAction(formData: FormData) {
   const result = await store.saveTextEntry(id || null, {
     slug: slug || undefined,
     title,
-    sourceCategory: sourceCategory || "其他",
+    sourceCategory,
     sourceName,
     ingameLocation,
     note,

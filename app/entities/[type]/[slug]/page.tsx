@@ -289,7 +289,7 @@ export default async function EntityDetailPage(props: {
                       <Link href={`/texts/${item.entrySlug}`}>{item.entryTitle}</Link>
                     </td>
                     <td>
-                      {item.sourceCategory}
+                      {item.sourceCategory || "—"}
                       {item.sourceName ? ` · ${item.sourceName}` : ""}
                       {item.ingameLocation ? <div className="item-meta">{item.ingameLocation}</div> : null}
                     </td>
@@ -325,7 +325,7 @@ export default async function EntityDetailPage(props: {
                       <Link href={`/texts/${item.entrySlug}`}>{item.entryTitle}</Link>
                     </td>
                     <td>
-                      {item.sourceCategory}
+                      {item.sourceCategory || "—"}
                       {item.sourceName ? ` · ${item.sourceName}` : ""}
                       {item.ingameLocation ? <div className="item-meta">{item.ingameLocation}</div> : null}
                     </td>

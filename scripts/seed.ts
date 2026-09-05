@@ -151,7 +151,7 @@ async function main() {
   // 文本
   const t1 = await store.saveTextEntry(null, {
     title: "旧港的黑衣旅人",
-    sourceCategory: "世界探索",
+    sourceCategory: "描述文本",
     sourceName: "白潮港",
     ingameLocation: "白潮港西侧栈桥，第一次进入港口后的夜晚，调查尽头的湿脚印",
     note: "",
@@ -165,7 +165,7 @@ async function main() {
 
   const t2 = await store.saveTextEntry(null, {
     title: "白潮港的测潮记录",
-    sourceCategory: "角色信息",
+    sourceCategory: "角色对话",
     sourceName: "阿澜",
     ingameLocation: "白潮港测潮塔二层，阿澜的工作日志，第三页",
     note: "",
@@ -179,7 +179,7 @@ async function main() {
 
   const t3 = await store.saveTextEntry(null, {
     title: "北方灯塔守则",
-    sourceCategory: "主线任务",
+    sourceCategory: "档案资料",
     sourceName: "北方灯塔",
     ingameLocation: "灰烬台地北侧灯塔入口，任务“雾中的火种”开始后阅读木牌",
     note: "",
@@ -191,7 +191,7 @@ async function main() {
 
   const t4 = await store.saveTextEntry(null, {
     title: "灰烬台地的低语",
-    sourceCategory: "世界探索",
+    sourceCategory: "地图气泡",
     sourceName: "灰烬台地",
     ingameLocation: "灰烬台地东南坡，倒塌灯塔后的黑色石板",
     note: "",
@@ -204,7 +204,7 @@ async function main() {
   // v2：T-005 测潮条例（长文本，整篇关联到潮汐议会，无段落级关联）
   const t5 = await store.saveTextEntry(null, {
     title: "潮汐议会测潮条例",
-    sourceCategory: "主线任务",
+    sourceCategory: "邮件",
     sourceName: "潮汐议会",
     ingameLocation: "白潮港测潮塔一层公告板，进入测潮塔后可阅读",
     note: "v2 测试：整篇关联——整篇关联到潮汐议会，无段落级 [[...]] 链接。",

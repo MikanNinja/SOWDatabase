@@ -78,7 +78,7 @@ export default async function TextListPage(props: {
                     <Link href={`/texts/${text.slug}`}>{text.title}</Link>
                   </td>
                   <td>
-                    {text.sourceCategory}
+                    {text.sourceCategory || "—"}
                     {text.sourceName ? ` · ${text.sourceName}` : ""}
                   </td>
                   <td>{text.ingameLocation}</td>

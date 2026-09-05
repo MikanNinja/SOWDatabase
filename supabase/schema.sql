@@ -88,7 +88,7 @@ create table text_entries (
   id                uuid primary key default gen_random_uuid(),
   slug              text not null unique,
   title             text not null,
-  source_category   text not null default '其他',
+  source_category   text not null default '',
   source_name       text not null default '',
   ingame_location   text not null default '',
   note              text not null default '',

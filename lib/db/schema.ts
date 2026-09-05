@@ -83,7 +83,7 @@ CREATE TABLE IF NOT EXISTS text_entries (
   id                TEXT PRIMARY KEY,
   slug              TEXT NOT NULL UNIQUE,
   title             TEXT NOT NULL,
-  source_category   TEXT NOT NULL DEFAULT '其他',
+  source_category   TEXT NOT NULL DEFAULT '',
   source_name       TEXT NOT NULL DEFAULT '',
   ingame_location   TEXT NOT NULL DEFAULT '',
   note              TEXT NOT NULL DEFAULT '',

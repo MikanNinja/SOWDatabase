@@ -153,7 +153,7 @@ export default async function EditEntityPage(props: {
                 {related.map((item) => (
                   <tr key={item.blockId}>
                     <td><Link href={`/admin/texts/${item.entryId}/edit`}>{item.entryTitle}</Link></td>
-                    <td>{item.sourceCategory}{item.sourceName ? ` · ${item.sourceName}` : ""}</td>
+                    <td>{item.sourceCategory || "—"}{item.sourceName ? ` · ${item.sourceName}` : ""}</td>
                     <td>{item.blockOrdinal + 1}</td>
                     <td>
                       <div

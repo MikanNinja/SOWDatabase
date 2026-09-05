@@ -112,7 +112,7 @@ export default async function AdminDashboardPage() {
                 {recentTexts.map((text) => (
                   <tr key={text.id}>
                     <td><Link href={`/admin/texts/${text.id}/edit`}>{text.title}</Link></td>
-                    <td>{text.sourceCategory}{text.sourceName ? ` · ${text.sourceName}` : ""}</td>
+                    <td>{text.sourceCategory || "—"}{text.sourceName ? ` · ${text.sourceName}` : ""}</td>
                     <td><span className={`badge ${text.status}`}>{text.status === "published" ? "已发布" : "草稿"}</span></td>
                     <td>{text.updatedAt.slice(0, 10)}</td>
                   </tr>

@@ -3,7 +3,7 @@ import type { TextEntry } from "@/lib/db/types"
 import { saveTextAction } from "@/app/admin/actions"
 import SubmitButton from "@/components/admin/SubmitButton"
 
-const CATEGORY_OPTIONS = ["主线任务", "角色信息", "世界探索", "NPC 日常", "其他"]
+const CATEGORY_OPTIONS = ["档案资料", "角色对话", "地图互动", "地图气泡", "描述文本", "过场动画", "邮件", "其他分类"]
 
 export default function TextForm({
   entry,
@@ -25,8 +25,9 @@ export default function TextForm({
           <input type="text" id="title" name="title" required defaultValue={entry?.title ?? ""} />
         </div>
         <div className="form-field">
-          <label htmlFor="sourceCategory">来源类别 *</label>
-          <select id="sourceCategory" name="sourceCategory" defaultValue={entry?.sourceCategory ?? "其他"}>
+          <label htmlFor="sourceCategory">来源类别</label>
+          <select id="sourceCategory" name="sourceCategory" defaultValue={entry?.sourceCategory ?? ""}>
+            <option value="">(未设置)</option>
             {allCategories.map((category) => (
               <option key={category} value={category}>{category}</option>
             ))}
@@ -37,12 +38,11 @@ export default function TextForm({
           <input type="text" id="sourceName" name="sourceName" defaultValue={entry?.sourceName ?? ""} />
         </div>
         <div className="form-field">
-          <label htmlFor="ingameLocation">游戏内定位 *</label>
+          <label htmlFor="ingameLocation">游戏内定位</label>
           <input
             type="text"
             id="ingameLocation"
             name="ingameLocation"
-            required
             defaultValue={entry?.ingameLocation ?? ""}
           />
           <span className="hint">例如：区域、NPC、菜单路径、任务阶段等，用于读者回到游戏核对。</span>
