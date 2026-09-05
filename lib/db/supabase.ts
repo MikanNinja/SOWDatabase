@@ -1210,39 +1210,6 @@ export class SupabaseStore implements Store {
     }
   }
 
-  async batchAddManualLinks(entryId: string, entityIds: string[]): Promise<void> {
-    const { data: blocks } = await this.supabase
-      .from("text_blocks")
-      .select("id")
-      .eq("entry_id", entryId)
-    const blockIds = (blocks ?? []).map((b) => b.id)
-    if (blockIds.length === 0 || entityIds.length === 0) return
-    const { data: existing } = await this.supabase
-      .from("content_links")
-      .select("block_id,target_id")
-      .in("block_id", blockIds)
-      .eq("source", "manual")
-    const seen = new Set((existing ?? []).map((e) => `${e.block_id}:${e.target_id}`))
-    const rows: Record<string, string>[] = []
-    for (const blockId of blockIds) {
-      for (const entityId of entityIds) {
-        if (seen.has(`${blockId}:${entityId}`)) continue
-        rows.push({
-          id: newId(),
-          block_id: blockId,
-          target_kind: "entity",
-          target_id: entityId,
-          source: "manual",
-          display_text: "",
-          raw: "",
-        })
-      }
-    }
-    if (rows.length > 0) {
-      await this.supabase.from("content_links").insert(rows)
-    }
-  }
-
   async getRelatedBlocksForEntity(entityId: string): Promise<RelatedBlock[]> {
     const { data: linkData, error: linkError } = await this.supabase
       .from("content_links")

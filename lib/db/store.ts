@@ -183,7 +183,6 @@ export interface Store {
 
   getEntryBlocks(entryId: string): Promise<BlockWithLinks[]>
   setManualLinks(blockId: string, entityIds: string[]): Promise<void>
-  batchAddManualLinks(entryId: string, entityIds: string[]): Promise<void>
 
   getRelatedBlocksForEntity(entityId: string): Promise<RelatedBlock[]>
 

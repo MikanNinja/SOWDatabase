@@ -812,10 +812,6 @@ h3 {
   margin-left: 0.4rem;
 }
 
-.batch-link-form {
-  max-width: 34rem;
-}
-
 .alert {
   border: 1px solid var(--line);
   border-left: 4px solid var(--line);

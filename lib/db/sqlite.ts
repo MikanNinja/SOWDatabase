@@ -1191,29 +1191,6 @@ export class SQLiteStore implements Store {
     }
   }
 
-  async batchAddManualLinks(entryId: string, entityIds: string[]): Promise<void> {
-    const blocks = this.db
-      .prepare("SELECT id FROM text_blocks WHERE entry_id = ? ORDER BY ordinal")
-      .all(entryId) as { id: string }[]
-    const existing = this.db
-      .prepare(
-        `SELECT block_id, target_id FROM content_links WHERE source = 'manual' AND target_kind = 'entity'
-         AND block_id IN (${blocks.map(() => "?").join(",")})`
-      )
-      .all(...blocks.map((b) => b.id)) as { block_id: string; target_id: string }[]
-    const seen = new Set(existing.map((e) => `${e.block_id}:${e.target_id}`))
-    const insert = this.db.prepare(
-      "INSERT INTO content_links (id, block_id, target_kind, target_id, source, display_text, raw) VALUES (?, ?, ?, ?, ?, ?, ?)"
-    )
-    for (const block of blocks) {
-      for (const entityId of entityIds) {
-        if (seen.has(`${block.id}:${entityId}`)) continue
-        insert.run(newId(), block.id, "entity", entityId, "manual", "", "")
-        seen.add(`${block.id}:${entityId}`)
-      }
-    }
-  }
-
   async getRelatedBlocksForEntity(entityId: string): Promise<RelatedBlock[]> {
     const rows = this.db
       .prepare(

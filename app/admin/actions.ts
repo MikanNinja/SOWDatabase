@@ -195,18 +195,6 @@ export async function setManualLinksAction(formData: FormData) {
   redirect(`/admin/texts/${entryId}/edit`)
 }
 
-export async function batchManualLinksAction(formData: FormData) {
-  if (!(await isAuthed())) redirect("/admin/login")
-  const store = await getStore()
-  const entryId = String(formData.get("entryId") ?? "")
-  const entityIds = String(formData.get("entityIds") ?? "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean)
-  await store.batchAddManualLinks(entryId, entityIds)
-  redirect(`/admin/texts/${entryId}/edit`)
-}
-
 export async function updateSettingsAction(formData: FormData) {
   if (!(await isAuthed())) redirect("/admin/login")
   const store = await getStore()

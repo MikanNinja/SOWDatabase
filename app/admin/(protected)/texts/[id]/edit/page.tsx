@@ -6,7 +6,7 @@ import TextAssociationsForm from "@/components/admin/TextAssociationsForm"
 import { renderEntryBlocks } from "@/lib/render"
 import { computeLinkIssues } from "@/lib/links"
 import { ENTITY_TYPE_LABELS } from "@/lib/db/types"
-import { setManualLinksAction, batchManualLinksAction } from "@/app/admin/actions"
+import { setManualLinksAction } from "@/app/admin/actions"
 import SubmitButton from "@/components/admin/SubmitButton"
 
 export const dynamic = "force-dynamic"
@@ -92,31 +92,6 @@ export default async function EditTextPage(props: {
           entities={entityOptions}
           currentAssociations={currentAssociations}
         />
-      </section>
-
-      <section className="record-section">
-        <h2>批量关联</h2>
-        <form action={batchManualLinksAction} className="form-grid batch-link-form">
-          <input type="hidden" name="entryId" value={entry.id} />
-          <div className="form-field">
-            <label htmlFor="batchEntity">选择实体</label>
-            <select id="batchEntity" name="entityIds">
-              {(["person", "place", "faction"] as const).map((type) => (
-                <optgroup key={type} label={ENTITY_TYPE_LABELS[type]}>
-                  {entitiesByType[type].map((entity) => (
-                    <option key={entity.id} value={entity.id}>
-                      {entity.name}
-                      {entity.aliases.length > 0 ? `（${entity.aliases.join("、")}）` : ""}
-                    </option>
-                  ))}
-                </optgroup>
-              ))}
-            </select>
-          </div>
-          <div className="form-actions">
-            <SubmitButton className="btn" pendingLabel="添加中…">添加到所有段落</SubmitButton>
-          </div>
-        </form>
       </section>
 
       <section className="record-section">
