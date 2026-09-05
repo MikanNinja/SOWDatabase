@@ -161,6 +161,34 @@ async function main() {
   if (exportData.relations.length !== 3) throw new Error("导出 relations 验证失败")
   if (exportData.textEntityAssociations.length !== 2) throw new Error("导出 textEntityAssociations 验证失败")
 
+  // ========== 数据一致性：entity_factions 类型约束 ==========
+
+  // 成员必须是人物、faction_id 必须是势力（脏行会表现为势力页混入非人物成员）
+  const invalidMemberRows: string[] = []
+  for (const f of entities.filter((e) => e.type === "faction")) {
+    const members = await store.getFactionMembers(f.id)
+    for (const m of members) {
+      if (m.entity.type !== "person") {
+        invalidMemberRows.push(`${f.name} 的成员「${m.entity.name}」类型为 ${m.entity.type}`)
+      }
+    }
+  }
+  const invalidTargetRows: string[] = []
+  for (const e of entities) {
+    const facs = await store.getEntityFactions(e.id)
+    for (const ef of facs) {
+      const target = await store.getEntityById(ef.factionId)
+      if (!target || target.type !== "faction") {
+        invalidTargetRows.push(`「${e.name}」的所属势力 ${ef.factionId} 不是有效势力实体`)
+      }
+    }
+  }
+  console.log("entity_factions 脏行（成员非人物）:", invalidMemberRows.length)
+  console.log("entity_factions 脏行（目标非势力）:", invalidTargetRows.length)
+  if (invalidMemberRows.length > 0 || invalidTargetRows.length > 0) {
+    throw new Error(`entity_factions 类型一致性验证失败：\n${[...invalidMemberRows, ...invalidTargetRows].join("\n")}`)
+  }
+
   console.log("\n验证完成（含 v2 扩展）。")
 }
 

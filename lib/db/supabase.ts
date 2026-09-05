@@ -399,7 +399,7 @@ export class SupabaseStore implements Store {
     if (error) throw error
     const aliases = linesToList((input.aliases ?? []).join("\n"))
     await this.replaceAliases(id, aliases)
-    await this.replaceFactions(id, input.factions ?? [])
+    await this.replaceFactions(id, input.type === "person" ? input.factions ?? [] : [])
     return (await this.getEntityById(id))!
   }
 
@@ -465,7 +465,14 @@ export class SupabaseStore implements Store {
       .eq("id", id)
     if (error) throw error
     await this.replaceAliases(id, finalAliases)
-    await this.replaceFactions(id, input.factions ?? [])
+    if (existing.type !== input.type) {
+      await this.supabase.from("entity_factions").delete().eq("entity_id", id)
+      await this.deleteRelationsForPerson(id)
+      if (input.type === "person") {
+        await this.supabase.from("entities").update({ parent_id: null }).eq("id", id)
+      }
+    }
+    await this.replaceFactions(id, input.type === "person" ? input.factions ?? [] : [])
     return (await this.getEntityById(id))!
   }
 
@@ -480,6 +487,31 @@ export class SupabaseStore implements Store {
   }
 
   private async replaceFactions(entityId: string, factions: FactionInput[]): Promise<void> {
+    if (factions.length > 0) {
+      const { data: memberRow, error: memberError } = await this.supabase
+        .from("entities")
+        .select("type")
+        .eq("id", entityId)
+        .eq("deleted", false)
+        .maybeSingle()
+      if (memberError) throw memberError
+      if (!memberRow) throw new Error("实体不存在或已删除，无法保存所属势力")
+      if ((memberRow as { type: string }).type !== "person") {
+        throw new Error("只有人物实体可以设置所属势力")
+      }
+      for (const f of factions) {
+        const { data: target, error: targetError } = await this.supabase
+          .from("entities")
+          .select("type")
+          .eq("id", f.factionId)
+          .eq("deleted", false)
+          .maybeSingle()
+        if (targetError) throw targetError
+        if (!target || (target as { type: string }).type !== "faction") {
+          throw new Error(`所属势力无效或不是势力类型实体：${f.factionId}`)
+        }
+      }
+    }
     await this.supabase.from("entity_factions").delete().eq("entity_id", entityId)
     if (factions.length > 0) {
       await this.supabase.from("entity_factions").insert(

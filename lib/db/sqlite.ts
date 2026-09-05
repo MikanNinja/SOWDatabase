@@ -450,7 +450,7 @@ export class SQLiteStore implements Store {
       )
     const aliases = linesToList((input.aliases ?? []).join("\n"))
     this.replaceAliases(id, aliases)
-    await this.replaceFactions(id, input.factions ?? [])
+    await this.replaceFactions(id, type === "person" ? input.factions ?? [] : [])
     return (await this.getEntityById(id))!
   }
 
@@ -523,7 +523,14 @@ export class SQLiteStore implements Store {
         id
       )
     this.replaceAliases(id, finalAliases)
-    await this.replaceFactions(id, input.factions ?? [])
+    if (existing.type !== input.type) {
+      this.db.prepare("DELETE FROM entity_factions WHERE entity_id = ?").run(id)
+      await this.deleteRelationsForPerson(id)
+      if (input.type === "person") {
+        this.db.prepare("UPDATE entities SET parent_id = NULL WHERE id = ?").run(id)
+      }
+    }
+    await this.replaceFactions(id, input.type === "person" ? input.factions ?? [] : [])
     return (await this.getEntityById(id))!
   }
 
@@ -538,6 +545,21 @@ export class SQLiteStore implements Store {
   }
 
   private async replaceFactions(entityId: string, factions: FactionInput[]): Promise<void> {
+    if (factions.length > 0) {
+      const member = this.db
+        .prepare("SELECT type FROM entities WHERE id = ? AND deleted = 0")
+        .get(entityId) as { type: string } | undefined
+      if (!member) throw new Error("实体不存在或已删除，无法保存所属势力")
+      if (member.type !== "person") throw new Error("只有人物实体可以设置所属势力")
+      for (const f of factions) {
+        const target = this.db
+          .prepare("SELECT type FROM entities WHERE id = ? AND deleted = 0")
+          .get(f.factionId) as { type: string } | undefined
+        if (!target || target.type !== "faction") {
+          throw new Error(`所属势力无效或不是势力类型实体：${f.factionId}`)
+        }
+      }
+    }
     this.db.prepare("DELETE FROM entity_factions WHERE entity_id = ?").run(entityId)
     const insert = this.db.prepare(
       "INSERT INTO entity_factions (id, entity_id, faction_id, role, ordinal) VALUES (?, ?, ?, ?, ?)"

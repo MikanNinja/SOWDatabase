@@ -92,7 +92,9 @@ export default async function EntityDetailPage(props: {
   // v2：势力成员
   const members = entity.type === "faction"
     ? await store.getFactionMembers(entity.id)
-        .then((list) => list.filter((m) => m.entity.status === "published"))
+        .then((list) => list.filter(
+          (m) => m.entity.status === "published" && m.entity.type === "person"
+        ))
     : []
 
   // v2：人物关系（双向展示，仅已发布人物）

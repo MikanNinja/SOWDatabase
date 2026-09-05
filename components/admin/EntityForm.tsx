@@ -60,7 +60,6 @@ export default function EntityForm({
   return (
     <form action={saveEntityAction} className="form-grid">
       {editing && <input type="hidden" name="id" value={entity!.id} />}
-      <input type="hidden" name="factions" value={factionsJson} />
       <div className="entity-form-meta">
         <div className="form-field">
           <label htmlFor="name">标准名称 *</label>
@@ -109,6 +108,7 @@ export default function EntityForm({
       {/* 人物专属字段 */}
       {type === "person" && (
         <>
+          <input type="hidden" name="factions" value={factionsJson} />
           <div className="form-field">
             <label htmlFor="race">种族</label>
             <input

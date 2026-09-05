@@ -64,6 +64,7 @@ export async function saveEntityAction(formData: FormData) {
 
   if (!name) throw new Error("名称不能为空")
   if (!["person", "place", "faction"].includes(type)) throw new Error("实体类型不合法")
+  if (type !== "person") factions = []
 
   // 人物生卒字段（仅 person 有值；其他类型留空/空串不影响）
   const toInt = (raw: string): number | null => {
