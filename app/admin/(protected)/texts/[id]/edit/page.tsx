@@ -5,8 +5,8 @@ import TextForm from "@/components/admin/TextForm"
 import TextAssociationsForm from "@/components/admin/TextAssociationsForm"
 import { renderEntryBlocks } from "@/lib/render"
 import { computeLinkIssues } from "@/lib/links"
-import { ENTITY_TYPE_LABELS } from "@/lib/db/types"
-import { setManualLinksAction } from "@/app/admin/actions"
+import { ENTITY_TYPE_LABELS, type EntityType } from "@/lib/db/types"
+import { setManualLinksAction, saveTextQuestAction } from "@/app/admin/actions"
 import SubmitButton from "@/components/admin/SubmitButton"
 
 export const dynamic = "force-dynamic"
@@ -14,8 +14,14 @@ export const dynamic = "force-dynamic"
 const ISSUE_LABEL = {
   invalid: "格式错误",
   not_found: "未找到目标",
-  ambiguous: "目标不唯一，需要指定",
+  ambiguous: "目标不唯一，请用钉定写法指定",
 } as const
+
+function candidateLabel(candidate: { kind: "entity" | "text"; label: string; slug: string; type?: EntityType }): string {
+  return candidate.type
+    ? `${ENTITY_TYPE_LABELS[candidate.type]}·${candidate.label}（${candidate.slug}）`
+    : `${candidate.label}（${candidate.slug}）`
+}
 
 export default async function EditTextPage(props: {
   params: Promise<{ id: string }>
@@ -35,6 +41,8 @@ export default async function EditTextPage(props: {
     place: entities.filter((entity) => entity.type === "place"),
     faction: entities.filter((entity) => entity.type === "faction"),
   }
+  // v5：所属任务下拉选项
+  const quests = await store.listQuests({})
   const manualLinksByBlock = new Map<string, Set<string>>()
   for (const { block, links } of blocksWithLinks) {
     manualLinksByBlock.set(
@@ -67,19 +75,24 @@ export default async function EditTextPage(props: {
       {issues.length > 0 && (
         <div className="alert warn">
           <strong>内部链接待处理（{issues.length}）：</strong>
-          <ul>
-            {issues.map((issue, index) => (
-              <li key={index}>
-                <code>{issue.raw}</code>：{ISSUE_LABEL[issue.reason]}
-                {issue.reason === "ambiguous" && issue.candidates.length > 0 && (
-                  <span className="muted">
-                    （候选：{issue.candidates.map((candidate) => candidate.label).join("、")}）
-                  </span>
-                )}
-              </li>
-            ))}
-          </ul>
-          <p className="hint">发布前请修正这些链接，公开页面不会显示指向不存在页面的链接。</p>
+        <ul>
+          {issues.map((issue, index) => (
+            <li key={index}>
+              <code>{issue.raw}</code>：{ISSUE_LABEL[issue.reason]}
+              {issue.reason === "ambiguous" && issue.candidates.length > 0 && (
+                <span className="muted">
+                  （候选：{issue.candidates.map(candidateLabel).join("、")}
+                  ；钉定写法：<code>{`[[${issue.target}@${issue.candidates[0].slug}]]`}</code>）
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+        <p className="hint">
+          发布前请修正这些链接，公开页面不会显示指向不存在页面的链接。
+          目标不唯一时，在 target 末尾用 @slug 钉定目标（slug 见候选列表），支持
+          [[名称@slug]]、[[名称@slug|显示文字]]、[[文本:标题@slug]]；钉定不改变链接的显示文字。
+        </p>
         </div>
       )}
 
@@ -92,6 +105,27 @@ export default async function EditTextPage(props: {
           entities={entityOptions}
           currentAssociations={currentAssociations}
         />
+      </section>
+
+      {/* v5：所属任务（独立 section，创建时不指定；一篇文本至多属于一个任务） */}
+      <section className="record-section">
+        <h2>所属任务</h2>
+        <p className="hint">整篇文本归属的任务，一个任务可对应多篇文本。大多数文本不关联任务，保持“(无)”即可。</p>
+        <form action={saveTextQuestAction} className="form-grid" autoComplete="off">
+          <input type="hidden" name="entryId" value={entry.id} />
+          <div className="form-field">
+            <label htmlFor="questId">所属任务</label>
+            <select id="questId" name="questId" defaultValue={entry.questId ?? ""}>
+              <option value="">(无)</option>
+              {quests.map((quest) => (
+                <option key={quest.id} value={quest.id}>{quest.name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="form-actions">
+            <SubmitButton pendingLabel="保存中…">保存所属任务</SubmitButton>
+          </div>
+        </form>
       </section>
 
       <section className="record-section">
@@ -113,7 +147,7 @@ export default async function EditTextPage(props: {
                   className="prose block-body"
                   dangerouslySetInnerHTML={{ __html: renderedBlock?.html ?? "" }}
                 />
-                <form action={setManualLinksAction} className="block-entities">
+                <form action={setManualLinksAction} className="block-entities" autoComplete="off">
                   <input type="hidden" name="blockId" value={block.id} />
                   <input type="hidden" name="entryId" value={entry.id} />
                   <details>

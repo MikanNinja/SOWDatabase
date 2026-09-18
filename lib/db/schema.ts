@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS entities (
   birth_place_free TEXT NOT NULL DEFAULT '',
   death_place_id   TEXT,
   death_place_free TEXT NOT NULL DEFAULT '',
+  life_status      TEXT NOT NULL DEFAULT '',
   status     TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','published')),
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
@@ -43,6 +44,28 @@ CREATE INDEX IF NOT EXISTS idx_entity_aliases_alias ON entity_aliases(alias);
 CREATE INDEX IF NOT EXISTS idx_entities_type ON entities(type);
 CREATE INDEX IF NOT EXISTS idx_entities_status ON entities(status);
 CREATE INDEX IF NOT EXISTS idx_entities_parent ON entities(parent_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_entities_type_name_unique
+  ON entities(type, name COLLATE NOCASE) WHERE deleted = 0;
+
+CREATE TABLE IF NOT EXISTS quests (
+  id         TEXT PRIMARY KEY,
+  slug       TEXT NOT NULL UNIQUE,
+  name       TEXT NOT NULL,
+  category   TEXT NOT NULL DEFAULT 'main' CHECK (category IN ('main','personal','major','minor','daily','event')),
+  chapter    TEXT NOT NULL DEFAULT '',
+  stage      TEXT NOT NULL DEFAULT '',
+  sort_order INTEGER,
+  note       TEXT NOT NULL DEFAULT '',
+  status     TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','published')),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  deleted    INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_quests_status ON quests(status);
+CREATE INDEX IF NOT EXISTS idx_quests_category ON quests(category);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_quests_name_unique
+  ON quests(name COLLATE NOCASE) WHERE deleted = 0;
 
 CREATE TABLE IF NOT EXISTS entity_factions (
   id         TEXT PRIMARY KEY,
@@ -69,6 +92,17 @@ CREATE TABLE IF NOT EXISTS person_relations (
 CREATE INDEX IF NOT EXISTS idx_person_relations_from ON person_relations(from_id, ordinal);
 CREATE INDEX IF NOT EXISTS idx_person_relations_to ON person_relations(to_id, ordinal);
 
+CREATE TABLE IF NOT EXISTS quest_characters (
+  id        TEXT PRIMARY KEY,
+  quest_id  TEXT NOT NULL REFERENCES quests(id) ON DELETE CASCADE,
+  person_id TEXT NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+  role      TEXT NOT NULL DEFAULT '',
+  ordinal   INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_quest_characters_quest ON quest_characters(quest_id, ordinal);
+CREATE INDEX IF NOT EXISTS idx_quest_characters_person ON quest_characters(person_id);
+
 CREATE TABLE IF NOT EXISTS text_entity_associations (
   id        TEXT PRIMARY KEY,
   entry_id  TEXT NOT NULL REFERENCES text_entries(id) ON DELETE CASCADE,
@@ -88,6 +122,7 @@ CREATE TABLE IF NOT EXISTS text_entries (
   ingame_location   TEXT NOT NULL DEFAULT '',
   note              TEXT NOT NULL DEFAULT '',
   body              TEXT NOT NULL DEFAULT '',
+  quest_id          TEXT REFERENCES quests(id) ON DELETE SET NULL,
   status            TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','published')),
   created_at        TEXT NOT NULL,
   updated_at        TEXT NOT NULL,
@@ -96,6 +131,7 @@ CREATE TABLE IF NOT EXISTS text_entries (
 
 CREATE INDEX IF NOT EXISTS idx_text_entries_status ON text_entries(status);
 CREATE INDEX IF NOT EXISTS idx_text_entries_category ON text_entries(source_category);
+CREATE INDEX IF NOT EXISTS idx_text_entries_quest ON text_entries(quest_id);
 
 CREATE TABLE IF NOT EXISTS text_blocks (
   id       TEXT PRIMARY KEY,

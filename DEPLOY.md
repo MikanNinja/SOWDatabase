@@ -1,132 +1,128 @@
-# 部署指南（Vercel + Supabase）
+# 部署指南（本地编辑 + 静态站点）
 
-写给非专业背景的拥有者：本指南带你把网站从"本地"搬到"互联网"。
-整体思路：**代码进 GitHub → Vercel 负责运行网站 → Supabase 负责存数据**。三者各管一摊。
+写给非专业背景的拥有者：本指南带你维护一个**纯静态**的公开网站。
+整体思路：**内容在你自己电脑上编辑（本地后台 + SQLite）→ 构建成纯静态文件 → 上传到 Cloudflare Pages**。
+公开网站不再依赖 Vercel 或 Supabase，访客直接从 CDN 边缘节点拿到现成页面，速度是能做到的最快水平。
 
-> 你的 Git 仓库根目录是 `web/`（`.git` 文件夹在这里）。推送到 GitHub 的只有 `web/` 里的内容，不含 `node_modules`、`.next`、`.env.local` 和本地数据（这些已被 `.gitignore` 排除）。
-
----
-
-## 第 0 步：准备三个账号
-
-1. **GitHub**（已有则跳过）：https://github.com —— 用来托管代码。
-2. **Vercel**：https://vercel.com —— 用 GitHub 账号直接登录即可，负责把代码变成线上网站。
-3. **Supabase**：https://supabase.com —— 用来存真实数据（免费档足够）。
-
-不需要在本机安装 Node 或数据库，部署全程在网页上点选完成。
+> 变更带来的三个核心变化：
+> 1. 编辑内容从"线上后台"变回"本地后台"（你以前的本地工作流，`npm run dev` → `/admin`）。
+> 2. 内容改完后需要**重新构建并上传**才会出现在公开网站上（几分钟的事）。
+> 3. Supabase 不再需要；数据就存在本机 `data/app.db` 里，备份简单可靠。
 
 ---
 
-## 第 1 步：把代码推送到 GitHub
-
-在 `web/` 目录下打开终端（Git Bash），依次执行：
+## 日常维护流程（每次改完内容）
 
 ```bash
-# 如果还没初始化远程仓库，先在 GitHub 网页新建一个空仓库，然后：
-git remote add origin https://github.com/你的用户名/你的仓库名.git
+# 1. 编辑内容（启动本地后台，浏览器打开 http://localhost:3000/admin）
+npm run dev
 
-# 提交并推送
-git add .
-git commit -m "首次部署"
-git push -u origin main
+# 2. 改完并发布后，关掉上面的命令（Ctrl+C），构建静态站点
+npm run build:static
+
+# 3. 上传到 Cloudflare Pages（见下方"部署"一节，只需一条命令）
+npx wrangler pages deploy out --project-name=sow-database
 ```
 
-> 注意：`.env.local` 不会被提交（里面是本地密钥，绝不能上传）。推上去的只是代码。
+> 注意：执行 `npm run build:static` 前，请先确保 `npm run dev` 已经停止（Windows 下文件被占用会导致构建失败）。
 
 ---
 
-## 第 2 步：在 Supabase 建好数据库
+## 第 0 步：准备账号与工具（只需一次）
 
-1. 登录 Supabase → **New project** → 填项目名、设一个强数据库密码（记住它）→ 选地区（离你近的，如 Singapore）→ **Create**。
-2. 创建完成后，左侧菜单进 **SQL Editor** → **New query**。
-3. 把本仓库 `supabase/schema.sql` 文件的**全部内容**复制粘贴进去 → 点 **Run**。
-   - 这一步会建好 `entities`、`text_entries`、`text_blocks`、`content_links` 等表，并开启行级安全。
-4. 左侧菜单进 **Project Settings → Data API**（或 **API**），复制两样东西备用：
-   - **Project URL**（形如 `https://xxxx.supabase.co`）
-   - **service_role** 密钥（在 "Project API keys" 里，注意选 `service_role`，不是 `anon`；它是服务端密钥，绝不能公开）
+1. **Node.js**：本机已装（你一直在本地开发）。
+2. **Cloudflare 账号**：https://dash.cloudflare.com 注册，免费。
+3. （可选）**GitHub 账号**：仅当选择"Git 仓库自动部署"路线时需要。
+
+不需要 Supabase 账号；`supabase/` 目录仅作为历史留档，可忽略。
 
 ---
 
-## 第 3 步：在 Vercel 部署网站
+## 第 1 步：首次部署到 Cloudflare Pages（推荐，直传方式）
 
-1. 登录 Vercel → **Add New → Project** → 导入第 1 步的 GitHub 仓库。
-2. 导入时配置：
-   - **Framework Preset**：选 `Next.js`（一般自动识别）。
-   - **Root Directory**：保持仓库根（即 `web/` 这一层）。
-   - **Build Command**：`next build`（自动填好，不用改）。
-3. **先不要点 Deploy**——先去设环境变量（第 4 步），设完再 Deploy。
-   - 如果已经误点了 Deploy，也没关系：部署后到项目 **Settings → Environment Variables** 补上变量，再 **Redeploy** 一次即可。
+1. 打开终端（在项目根目录），登录 Cloudflare：
+   ```bash
+   npx wrangler login
+   ```
+   会打开浏览器授权，点 Allow 即可。
+2. 创建并首次上传（`out/` 目录需已由 `npm run build:static` 生成）：
+   ```bash
+   npx wrangler pages project create sow-database --production-branch=main
+   npx wrangler pages deploy out --project-name=sow-database
+   ```
+3. 完成后 Cloudflare 会给你一个地址，形如 `https://sow-database.pages.dev`，这就是公开网站。
+
+以后每次更新内容，重复"日常维护流程"的三步即可。
+
+### 绑定自己的域名（可选）
+
+Cloudflare 控制台 → Workers & Pages → 你的项目 → **Custom domains** → 添加域名，按提示去域名服务商加 CNAME 记录，HTTPS 自动配好。
 
 ---
 
-## 第 4 步：填写环境变量（关键）
+## 备选：GitHub 仓库自动部署
 
-在 Vercel 项目 **Settings → Environment Variables** 里，逐个添加以下变量（建议 Environment 选 `Production`，或全选 Production/Preview/Development 都填）：
+如果不习惯命令行上传，也可以把 `out/` 产物推到一个 Git 仓库分支，Cloudflare Pages 连接该仓库自动发布。这条路线需要 GitHub 账号且仓库建议设为私有（`out/` 里有全部公开内容）。日常流程仍是本地构建，只是把"wrangler 直传"换成"git push"。两种方式任选其一即可。
 
-| 变量名 | 填什么 | 说明 |
-| --- | --- | --- |
-| `DATA_BACKEND` | `supabase` | 必须，告诉程序用 Supabase 而不是本地文件 |
-| `SUPABASE_URL` | 第 2 步复制的 Project URL | |
-| `SUPABASE_SERVICE_ROLE_KEY` | 第 2 步复制的 service_role 密钥 | 服务端密钥，绝不外泄 |
-| `ADMIN_USERNAME` | 你定的后台用户名 | 例如 `admin` 或自己的名字 |
-| `ADMIN_PASSWORD` | 一个强密码 | 生产环境必填，后台登录用 |
-| `AUTH_SECRET` | 一串随机字符 | 见下方生成方法 |
-| `SITE_NAME` | 你的资料库名称 | 显示在首页标题 |
-| `SITE_DESCRIPTION` | 一句话简介 | 可选，留空也行 |
+---
 
-生成 `AUTH_SECRET`（在 Git Bash 里执行，把输出结果填进去）：
+## 从 Supabase 迁移历史数据（一次性）
+
+如果线上 Supabase 里已经录入了几百条真实内容，用下面的命令一次性拉回本地数据库。迁移前请**先停止在线 Supabase 编辑**（迁移后以本地为准，继续在线编辑会造成两边数据分叉）。
+
+1. **拿到密钥**：Supabase 控制台 → Project Settings → API keys → 复制 `service_role`（secret）。它只在本地终端使用，不写进任何文件、不进仓库。
+2. **试运行**（写入临时库 `data/import-preview.db`，不动真实数据）：
+   ```bash
+   # Git Bash
+   SQLITE_PATH=data/import-preview.db SUPABASE_URL=https://你的项目.supabase.co SUPABASE_SERVICE_ROLE_KEY=你的密钥 npm run migrate:pull
+   ```
+   PowerShell 下的写法：
+   ```powershell
+   $env:SQLITE_PATH="data/import-preview.db"; $env:SUPABASE_URL="https://你的项目.supabase.co"; $env:SUPABASE_SERVICE_ROLE_KEY="你的密钥"; npm run migrate:pull
+   ```
+   核对输出的统计数字（实体/文本/文本块/链接/关系）与线上一致后，删除 `data/import-preview.db`（及其可能生成的 `.backup-*` 文件）。
+3. **正式迁移**：去掉 `SQLITE_PATH` 再跑一次（PowerShell 需先 `Remove-Item Env:SQLITE_PATH`）。脚本会自动备份 `data/app.db`（生成 `data/app.db.backup-时间戳`），然后清空本地测试数据、写入真实数据。
+4. **验证**：`npm run dev` 打开 `/admin` 抽查总数、回收站、一个人物页（关系/所属势力/层级）和一篇带 `[[...]]` 链接的文本；随后 `npm run build:static` 用真实数据出站。
+
+> 说明：脚本只从 Supabase **读取**，不会改动线上任何数据。迁移成功后 `npm run verify` 会因内置的虚构测试断言而失败，这是预期现象——改用脚本自带的行数核对与孤儿外键检查作为数据校验手段。若哪天想恢复测试数据，运行 `npm run seed` 即可（它会清空本地库并写入虚构数据）。
+
+---
+
+## 中国大陆访问说明
+
+- **Cloudflare Pages** 是无需备案的托管中对大陆访客比较友好的选择，通常明显快于 Vercel / GitHub Pages。
+- 如果以后追求极致速度且愿意做 ICP 备案，可以把 `out/` 上传到国内对象存储 + CDN（如腾讯云 COS + CDN），静态文件直接可用。
+- 无论哪种托管，页面本身是纯静态 HTML，差异只在 CDN 节点远近，不存在服务器冷启动。
+
+---
+
+## 数据备份
+
+数据全部在本地 `data/app.db`（已被 .gitignore 排除，不会进仓库）。建议定期备份：
 
 ```bash
-openssl rand -hex 32
+npm run export:json
 ```
 
-> 没有 openssl 的话，可以用任意密码生成器生成一段至少 32 位的随机十六进制字符串。
-> 变量名**不要**加 `NEXT_PUBLIC_` 前缀——带这个前缀的变量会被送到浏览器，`SUPABASE_SERVICE_ROLE_KEY` 和 `AUTH_SECRET` 必须只留在服务端。
-
-填完后回到 Vercel 项目页，点 **Deploy**（或 **Redeploy**）。等待构建完成，Vercel 会给你一个 `https://你的项目.vercel.app` 的地址。
+会在项目根目录生成一份完整 JSON 导出（实体、文本、文本块、链接、关系），把它存到安全位置（网盘/移动硬盘均可）。此命令取代了原线上后台的"导出"按钮。
 
 ---
 
-## 第 5 步：验证网站能打开
+## 静态站点的工作原理（简述）
 
-1. 浏览器打开 Vercel 给的地址（如 `https://xxx.vercel.app`）。
-2. 应看到首页"资料目录"，但此时**内容为空**——因为线上数据库是刚建好的空库。
-3. 访问 `/admin/login`，用第 4 步的 `ADMIN_USERNAME` / `ADMIN_PASSWORD` 登录。
-   - 能登录 = 环境变量和 Supabase 连接正常。
-
----
-
-## 第 6 步：把真实数据录进线上库
-
-你之前在本地 `data/app.db` 录入的内容**不会自动出现在线上**（本地文件不进仓库、也不上云）。因为你说数据量不大，最简单可靠的做法是：
-
-1. 登录线上后台 `/admin/login`。
-2. 在"实体管理"里逐条录入人物 / 地点 / 势力；在"文本管理"里粘贴正文（支持 `[[...]]` 内部链接）。
-3. 每条内容录入后点"发布"，访客即可在前台看到。
-
-> 如果你以后想从本地一次性迁移（而非手动重录），可以走"导出 JSON → 写导入脚本"的路子，到那时再让我帮忙即可。当前数据少，手动录入最稳。
-
----
-
-## 第 7 步（可选）：绑定自己的域名
-
-Vercel 项目 **Settings → Domains** 里填入你购买的域名，按提示去域名服务商加一条 CNAME 记录即可。Vercel 会自动配好 HTTPS。
-
----
-
-## 安全与运维提醒
-
-- **密钥只在 Vercel 里填**，不要写进 `.env.local` 后再推送（`.env.local` 已被 gitignore，但生产密钥应以 Vercel 环境变量为准）。
-- **`SUPABASE_SERVICE_ROLE_KEY` 等同于数据库管理员**，只能放在服务端环境变量，绝不要出现在前端代码或 `NEXT_PUBLIC_` 变量里。
-- 公开页面只会显示"已发布"内容；草稿只有登录后台能看到，访客猜 URL 也进不去。
-- 建议定期在后台用"导出"功能下载一份 JSON 备份，存到本地安全位置。
-- 更新内容只需登录后台操作；更新代码才需要改完 push 到 GitHub，Vercel 会自动重新部署。
+- `npm run build:static` 会临时把 `app/admin` 和 `proxy.ts` 移到 `.static-build/` 目录（它们需要服务器，静态站用不到），构建完成后自动还原。构建产物在 `out/` 文件夹。
+- 公开页面在构建时就渲染成最终 HTML：200 个实体页、250 个文本页、各类列表页一次生成。
+- 站内检索改为浏览器端完成：构建时会生成一份小体积索引 `search-index.json`，访客搜索时浏览器本地匹配，不再请求服务器。
+- 草稿安全性更好：构建只收录"已发布"内容，草稿根本不会出现在静态文件里。
+- 如果构建中途断电/报错导致 `.static-build/` 残留：先确认 `app/admin` 和 `proxy.ts` 不在原位时把它移回去，或删除空的 `.static-build/` 目录后重试。
 
 ---
 
 ## 常见卡点
 
-- **部署后页面报错 / 后台登不进**：99% 是环境变量漏填或填错。重点核对 `DATA_BACKEND=supabase`、`SUPABASE_URL`、`SUPABASE_SERVICE_ROLE_KEY` 是否齐全且无误，然后 Redeploy。
-- **`SUPABASE_SERVICE_ROLE_KEY` 在哪**：Supabase 左侧 **API** 页面，"Project API keys" 下选 `service_role`（带一把钥匙图标，标注 secret）。
-- **内容不显示**：检查是否点了"发布"；草稿对访客不可见。
-- **想重来一遍**：Supabase 里可以删库重建再跑 `schema.sql`；Vercel 里直接 Redeploy 不影响数据（数据在 Supabase，不在 Vercel）。
+- **构建时报文件占用错误**：99% 是 `npm run dev` 没关。Ctrl+C 停掉后再跑 `npm run build:static`。
+- **构建后提示 `.static-build 已存在`**：见上文"工作原理"最后一条的恢复办法。
+- **线上内容没更新**：确认你改完内容后执行了 `npm run build:static` 且 `wrangler pages deploy` 成功（看命令输出）。
+- **某个中文页面 404**：确认浏览器地址栏链接与站内一致；Cloudflare Pages 与主流静态托管都支持中文（percent-encoded）文件名，若自建 Nginx 需配置 `try_files $uri $uri.html $uri/ =404;`。
+- **迁移命令报"缺 race/parent_id 列"**：说明线上 Supabase 还没跑过 v2 迁移，先执行 `DATA_BACKEND=supabase SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... npm run migrate:v2` 再重试。
+- **想找回旧版部署方式（Vercel + Supabase）**：代码仍兼容——设置 `DATA_BACKEND=supabase` 与相应密钥即可回到服务器模式，但不再推荐。

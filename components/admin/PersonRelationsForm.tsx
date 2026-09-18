@@ -63,7 +63,7 @@ export default function PersonRelationsForm({
                 >
                   编辑
                 </button>
-                <form action={deleteRelationAction} style={{ display: "inline" }}>
+                <form action={deleteRelationAction} style={{ display: "inline" }} autoComplete="off">
                   <input type="hidden" name="id" value={r.relation.id} />
                   <input type="hidden" name="entityId" value={personId} />
                   <SubmitButton className="btn small danger" pendingLabel="删除中…">删除</SubmitButton>
@@ -81,7 +81,7 @@ export default function PersonRelationsForm({
       )}
 
       {showForm && (
-        <form action={saveRelationAction} className="form-grid relation-form">
+        <form action={saveRelationAction} className="form-grid relation-form" autoComplete="off">
           {editingId && <input type="hidden" name="id" value={editingId} />}
           <input type="hidden" name="entityId" value={personId} />
           <div className="form-field">

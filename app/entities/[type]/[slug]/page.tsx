@@ -1,11 +1,18 @@
 import Link from "next/link"
 import { notFound } from "next/navigation"
 import { getStore } from "@/lib/db/store"
-import { ENTITY_TYPE_LABELS } from "@/lib/db/types"
+import { ENTITY_TYPE_LABELS, QUEST_CATEGORY_LABELS } from "@/lib/db/types"
+import type { QuestPersonRef } from "@/lib/db/types"
 import { renderEntryBlocks, renderMarkdownContent } from "@/lib/render"
 import Breadcrumb from "@/components/Breadcrumb"
 
-export const dynamic = "force-dynamic"
+export const dynamicParams = false
+
+export async function generateStaticParams() {
+  const store = await getStore()
+  const entities = await store.listEntities({ status: "published" })
+  return entities.map((entity) => ({ type: entity.type, slug: entity.slug }))
+}
 
 function decodeSlug(value: string): string {
   try {
@@ -103,6 +110,11 @@ export default async function EntityDetailPage(props: {
         .filter((r) => r.otherPerson.status === "published")
     : []
 
+  // v4：人物相关任务（仅已发布任务；v5 起任务独立于实体，链接到 /quests）
+  const relatedQuests: QuestPersonRef[] = entity.type === "person"
+    ? (await store.getQuestsForPerson(entity.id)).filter((r) => r.quest.status === "published")
+    : []
+
   // 构建面包屑项（层级 + 类型 + 当前实体）
   const breadcrumbItems = [
     { label: ENTITY_TYPE_LABELS[entity.type], href: `/entities/${entity.type}` },
@@ -178,6 +190,9 @@ export default async function EntityDetailPage(props: {
       })
     } else if (entity.deathPlaceFree) {
       metaRows.push({ label: "死亡于", value: entity.deathPlaceFree })
+    }
+    if (entity.lifeStatus) {
+      metaRows.push({ label: "现状", value: entity.lifeStatus })
     }
   }
 
@@ -298,6 +313,45 @@ export default async function EntityDetailPage(props: {
               </tbody>
             </table>
           </div>
+        </section>
+      )}
+
+      {/* v4：相关任务（仅人物），置于"长篇资料"之后、"相关文本"之前 */}
+      {entity.type === "person" && (
+        <section className="record-section">
+          <h2>
+            相关任务 <span className="index-note">（{relatedQuests.length} 条）</span>
+          </h2>
+          {relatedQuests.length === 0 ? (
+            <p className="empty">暂无相关任务。</p>
+          ) : (
+            <div className="table-wrap">
+              <table className="catalog-table">
+                <thead>
+                  <tr>
+                    <th scope="col">任务</th>
+                    <th scope="col">分类</th>
+                    <th scope="col">篇章</th>
+                    <th scope="col">进程</th>
+                    <th scope="col">角色</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {relatedQuests.map(({ quest, role }) => (
+                    <tr key={quest.id}>
+                      <td>
+                        <Link href={`/quests/${quest.slug}`}>{quest.name}</Link>
+                      </td>
+                      <td>{QUEST_CATEGORY_LABELS[quest.category]}</td>
+                      <td>{quest.chapter || "—"}</td>
+                      <td>{quest.stage || "—"}</td>
+                      <td>{role || "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </section>
       )}
 

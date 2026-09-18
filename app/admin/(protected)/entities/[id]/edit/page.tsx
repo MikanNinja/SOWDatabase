@@ -4,7 +4,8 @@ import { getStore } from "@/lib/db/store"
 import EntityForm from "@/components/admin/EntityForm"
 import PersonRelationsForm from "@/components/admin/PersonRelationsForm"
 import { renderEntryBlocks } from "@/lib/render"
-import type { Entity, PersonRelation } from "@/lib/db/types"
+import { QUEST_CATEGORY_LABELS } from "@/lib/db/types"
+import type { Entity, PersonRelation, QuestPersonRef } from "@/lib/db/types"
 
 export const dynamic = "force-dynamic"
 
@@ -52,6 +53,11 @@ export default async function EditEntityPage(props: {
     ? await store.getRelationsForPerson(entity.id)
     : []
   const allPersons = allEntities.filter((e) => e.type === "person")
+
+  // v5：人物相关任务（反向只读视图，在任务编辑页维护）
+  const relatedQuests: QuestPersonRef[] = entity.type === "person"
+    ? await store.getQuestsForPerson(entity.id)
+    : []
 
   return (
     <div>
@@ -131,6 +137,30 @@ export default async function EditEntityPage(props: {
             persons={allPersons}
             relations={relations as RelationDisplay[]}
           />
+        </section>
+      )}
+
+      {/* v5：人物相关任务（反向只读视图，在任务编辑页维护） */}
+      {entity.type === "person" && (
+        <section className="record-section">
+          <h2>相关任务（{relatedQuests.length}）</h2>
+          {relatedQuests.length === 0 ? (
+            <p className="muted">暂无相关任务。相关任务通过任务的“出场人物”字段维护。</p>
+          ) : (
+            <ul className="item-list">
+              {relatedQuests.map(({ quest, role }) => (
+                <li key={quest.id}>
+                  <Link href={`/admin/quests/${quest.id}/edit`}>{quest.name}</Link>
+                  <span className="muted">
+                    （{QUEST_CATEGORY_LABELS[quest.category]}
+                    {quest.chapter ? ` · ${quest.chapter}` : ""}
+                    {quest.stage ? ` · ${quest.stage}` : ""}
+                    {role ? ` · ${role}` : ""}）
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
       )}
 

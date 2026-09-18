@@ -8,10 +8,12 @@ async function clearData(): Promise<void> {
   db.exec(`
     DELETE FROM text_entity_associations;
     DELETE FROM person_relations;
+    DELETE FROM quest_characters;
     DELETE FROM entity_factions;
     DELETE FROM content_links;
     DELETE FROM text_blocks;
     DELETE FROM text_entries;
+    DELETE FROM quests;
     DELETE FROM entity_aliases;
     DELETE FROM entities;
     DELETE FROM settings;
@@ -103,6 +105,7 @@ async function main() {
     intro: "经常在雾潮最浓的夜晚出现在旧港附近的神秘旅人。",
     note: "部分文本只使用“那个穿黑衣服的人”指代他，该称呼不是别名。",
     race: "人族",
+    lifeStatus: "下落不明",
     factions: [{ factionId: wudeng.id, role: "外围联络人" }],
     status: "published",
   })
@@ -148,7 +151,75 @@ async function main() {
     status: "published",
   })
 
-  // 文本
+  // v5：任务（独立于实体的第三种数据存在；主线带篇章+进程；个人任务带篇章；日常任务无篇章）
+  const questHuozhong = await store.createQuest({
+    name: "雾中的火种",
+    category: "main",
+    chapter: "第一篇章",
+    stage: "进程二",
+    sortOrder: 2,
+    note: "v5 测试：主线任务，带篇章与进程。",
+    persons: [
+      { personId: luchenzhou.id, role: "执行者" },
+      { personId: shenyan.id, role: "线索人物" },
+    ],
+    status: "published",
+  })
+  const questJingzhao = await store.createQuest({
+    name: "镜井的月影",
+    category: "personal",
+    chapter: "第一篇章",
+    sortOrder: 1,
+    note: "v5 测试：个人任务，带篇章，无进程。",
+    persons: [
+      { personId: alan.id, role: "委托人" },
+      { personId: shenyan.id, role: "" },
+    ],
+    status: "published",
+  })
+  const questChaoxi = await store.createQuest({
+    name: "例行的潮信",
+    category: "daily",
+    note: "v5 测试：日常任务，无篇章无进程，分类排序兜底。",
+    persons: [
+      { personId: alan.id, role: "发布者" },
+      { personId: tongtse.id, role: "协助者" },
+    ],
+    status: "published",
+  })
+  // 草稿任务：不出现在公开页/人物页/检索
+  await store.createQuest({
+    name: "未公开的委托",
+    category: "minor",
+    note: "v5 测试：草稿任务应在公开侧隐形。",
+    persons: [{ personId: wenshuang.id, role: "提及" }],
+    status: "draft",
+  })
+
+  // v2：人际关系
+  // 沈砚 ↔ 闻霜：同僚（对称称呼）
+  await store.createRelation({
+    fromId: shenyan.id,
+    toId: wenshuang.id,
+    kind: "同僚",
+    reverseKind: "同僚",
+  })
+  // 陆沉舟 → 沈砚：戒备对象 / 可疑旅人（不对称称呼）
+  await store.createRelation({
+    fromId: luchenzhou.id,
+    toId: shenyan.id,
+    kind: "戒备对象",
+    reverseKind: "可疑旅人",
+  })
+  // 陆沉舟 → 铜舌：守护对象 / (空)（反向为空，展示回退标注）
+  await store.createRelation({
+    fromId: luchenzhou.id,
+    toId: tongtse.id,
+    kind: "守护对象",
+    reverseKind: "",
+  })
+
+  // 文本（v5：t3/t6 通过 questId 归属任务“雾中的火种”，展示一个任务对应多篇文本）
   const t1 = await store.saveTextEntry(null, {
     title: "旧港的黑衣旅人",
     sourceCategory: "描述文本",
@@ -183,6 +254,7 @@ async function main() {
     sourceName: "北方灯塔",
     ingameLocation: "灰烬台地北侧灯塔入口，任务“雾中的火种”开始后阅读木牌",
     note: "",
+    questId: questHuozhong.id,
     body: `第一条：雾火熄灭后，任何人不得独自进入灯塔底层。
 
 第二条：如遇黑衣旅人，请将灯芯交给[[陆沉舟]]，不要交给[[未知人物|那位没有影子的人]]。`,
@@ -218,27 +290,20 @@ async function main() {
     status: "published",
   })
 
-  // v2：人际关系
-  // 沈砚 ↔ 闻霜：同僚（对称称呼）
-  await store.createRelation({
-    fromId: shenyan.id,
-    toId: wenshuang.id,
-    kind: "同僚",
-    reverseKind: "同僚",
-  })
-  // 陆沉舟 → 沈砚：戒备对象 / 可疑旅人（不对称称呼）
-  await store.createRelation({
-    fromId: luchenzhou.id,
-    toId: shenyan.id,
-    kind: "戒备对象",
-    reverseKind: "可疑旅人",
-  })
-  // 陆沉舟 → 铜舌：守护对象 / (空)（反向为空，展示回退标注）
-  await store.createRelation({
-    fromId: luchenzhou.id,
-    toId: tongtse.id,
-    kind: "守护对象",
-    reverseKind: "",
+  // v5：T-006 点火记录（已发布，与 T-003 同属任务“雾中的火种”，展示一对多）
+  const t6 = await store.saveTextEntry(null, {
+    title: "北方灯塔点火记录",
+    sourceCategory: "档案资料",
+    sourceName: "北方灯塔",
+    ingameLocation: "灰烬台地北侧灯塔二层，点亮雾火后解锁的档案",
+    note: "v5 测试：与 T-003 同属任务“雾中的火种”，展示一个任务对应多篇文本。",
+    questId: questHuozhong.id,
+    body: `第一夜：灯塔底层的机关守卫被唤醒，雾火重新点燃。
+
+第二夜：守卫登记了三类过境船只，其中一艘没有在册编号。
+
+第三夜：守卫在日志边缘写下“黑衣人再次出现”，此后记录中断。`,
+    status: "published",
   })
 
   // v2：整篇级关联
@@ -251,13 +316,15 @@ async function main() {
     { targetId: chaoxiyihui.id },
   ])
 
-  console.log("种子数据已写入（含 v2 扩展）。")
+  console.log("种子数据已写入（含 v2/v5 扩展）。")
   console.log(`- 实体：12 个（人物 5、地点 3、势力 4）`)
   console.log(`  - 人物种族：4 人族 + 1 机关族（铜舌）`)
   console.log(`  - 所属势力：每人物带角色/备注`)
   console.log(`  - 地点层级：镜井 → 白潮港`)
   console.log(`  - 势力层级：测潮塔小组 → 潮汐议会`)
-  console.log(`- 文本条目：5 条（T-001~T-004 同 v1，T-005 测潮条例）`)
+  console.log(`- 任务（独立表）：4 个（雾中的火种（主线·第一篇章·进程二）、镜井的月影（个人·第一篇章）、例行的潮信（日常）、未公开的委托（草稿·次要））`)
+  console.log(`  - 出场人物：7 条关联（雾中的火种 2、镜井的月影 2、例行的潮信 2、草稿 1）`)
+  console.log(`- 文本条目：6 条（T-003、T-006 归属任务“雾中的火种”，一对多）`)
   console.log(`- 人际关系：3 条`)
   console.log(`  - 沈砚 ↔ 闻霜：同僚（对称）`)
   console.log(`  - 陆沉舟 → 沈砚：戒备对象 / 可疑旅人（不对称）`)
@@ -275,6 +342,10 @@ async function main() {
   void t3
   void t4
   void t5
+  void t6
+  void questHuozhong
+  void questJingzhao
+  void questChaoxi
 }
 
 main().catch((err) => {

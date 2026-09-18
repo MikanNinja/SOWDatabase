@@ -14,7 +14,7 @@ export default async function AdminSettingsPage() {
         <p className="page-kicker">管理后台 / 配置</p>
         <h1>站点设置</h1>
       </header>
-      <form action={updateSettingsAction} className="form-grid">
+      <form action={updateSettingsAction} className="form-grid" autoComplete="off">
         <div className="form-field">
           <label htmlFor="siteName">站点名称</label>
           <input type="text" id="siteName" name="siteName" defaultValue={settings.siteName} />

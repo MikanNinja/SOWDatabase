@@ -62,10 +62,6 @@ export async function saveEntityAction(formData: FormData) {
     }
   }
 
-  if (!name) throw new Error("名称不能为空")
-  if (!["person", "place", "faction"].includes(type)) throw new Error("实体类型不合法")
-  if (type !== "person") factions = []
-
   // 人物生卒字段（仅 person 有值；其他类型留空/空串不影响）
   const toInt = (raw: string): number | null => {
     const t = raw.trim()
@@ -87,6 +83,7 @@ export async function saveEntityAction(formData: FormData) {
   const deathPlaceIdRaw = String(formData.get("deathPlaceId") ?? "").trim()
   const deathPlaceId = deathPlaceIdRaw || null
   const deathPlaceFree = String(formData.get("deathPlaceFree") ?? "").trim()
+  const lifeStatus = String(formData.get("lifeStatus") ?? "").trim()
 
   const input = {
     slug: slug || undefined,
@@ -108,6 +105,7 @@ export async function saveEntityAction(formData: FormData) {
     birthPlaceFree,
     deathPlaceId,
     deathPlaceFree,
+    lifeStatus,
     factions,
     status,
     aliases,
@@ -267,4 +265,92 @@ export async function saveTextAssociationsAction(formData: FormData) {
 
   await store.setTextEntityAssociations(entryId, associations)
   redirect(`/admin/texts/${entryId}/edit`)
+}
+
+// ---------- v5：任务（独立于实体的第三种数据存在） ----------
+
+/** 设置文本的所属任务（独立于文本主表单，主表单保存不触碰该字段） */
+export async function saveTextQuestAction(formData: FormData) {
+  if (!(await isAuthed())) redirect("/admin/login")
+  const store = await getStore()
+  const entryId = String(formData.get("entryId") ?? "").trim()
+  const questId = String(formData.get("questId") ?? "").trim()
+
+  if (!entryId) throw new Error("文本条目 id 不能为空")
+  await store.setTextEntryQuest(entryId, questId || null)
+  redirect(`/admin/texts/${entryId}/edit`)
+}
+
+export async function saveQuestAction(formData: FormData) {
+  if (!(await isAuthed())) redirect("/admin/login")
+  const store = await getStore()
+
+  const id = String(formData.get("id") ?? "")
+  const name = String(formData.get("name") ?? "").trim()
+  const status = String(formData.get("status") ?? "draft") as ContentStatus
+  const slug = String(formData.get("slug") ?? "").trim()
+  const category = String(formData.get("category") ?? "").trim()
+  const chapter = String(formData.get("chapter") ?? "").trim()
+  const stage = String(formData.get("stage") ?? "").trim()
+  const note = String(formData.get("note") ?? "")
+  const sortOrderRaw = String(formData.get("sortOrder") ?? "").trim()
+  let sortOrder: number | null = null
+  if (sortOrderRaw) {
+    const n = Number(sortOrderRaw)
+    if (Number.isNaN(n)) throw new Error("展示排序必须是数字")
+    sortOrder = Math.trunc(n)
+  }
+  const personsRaw = String(formData.get("persons") ?? "")
+  let persons: { personId: string; role?: string }[] = []
+  if (personsRaw) {
+    try {
+      const parsed = JSON.parse(personsRaw)
+      if (Array.isArray(parsed)) {
+        persons = parsed
+          .map((p: { personId?: string; role?: string }) => ({
+            personId: String(p?.personId ?? "").trim(),
+            role: p?.role ? String(p.role).trim() : "",
+          }))
+          .filter((p: { personId: string }) => p.personId)
+      }
+    } catch {
+      // 忽略格式错误
+    }
+  }
+
+  if (!name) throw new Error("任务名称不能为空")
+
+  const input = {
+    slug: slug || undefined,
+    name,
+    category,
+    chapter,
+    stage,
+    sortOrder,
+    note,
+    status,
+    persons,
+  }
+  if (id) {
+    await store.updateQuest(id, input)
+  } else {
+    await store.createQuest(input)
+  }
+  redirect("/admin/quests")
+}
+
+export async function deleteQuestAction(formData: FormData) {
+  if (!(await isAuthed())) redirect("/admin/login")
+  const store = await getStore()
+  const id = String(formData.get("id") ?? "")
+  await store.deleteQuest(id)
+  redirect("/admin/quests")
+}
+
+export async function restoreQuestAction(formData: FormData) {
+  if (!(await isAuthed())) redirect("/admin/login")
+  const store = await getStore()
+  const id = String(formData.get("id") ?? "")
+  await store.restoreQuest(id)
+  redirect("/admin/quests?deleted=1")
 }

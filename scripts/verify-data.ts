@@ -18,6 +18,23 @@ async function main() {
   const missing = await store.findEntityCandidates("未知人物")
   console.log("按不存在的名称解析[未知人物]:", missing.length, "(应为 0)")
 
+  const personNames = entities.filter((e) => e.type === "person").map((e) => e.name)
+  console.log("人物拼音序（应为 阿澜、陆沉舟、沈砚、铜舌、闻霜）:", personNames.join("、"))
+  if (personNames.join(",") !== "阿澜,陆沉舟,沈砚,铜舌,闻霜") {
+    throw new Error("人物列表拼音序验证失败")
+  }
+  const textTitles = texts.filter((t) => t.status === "published").map((t) => t.title)
+  console.log(
+    "已发布文本拼音序（应为 白潮港的测潮记录、北方灯塔点火记录、潮汐议会测潮条例、灰烬台地的低语、旧港的黑衣旅人）:",
+    textTitles.join("、")
+  )
+  if (
+    textTitles.join(",") !==
+    "白潮港的测潮记录,北方灯塔点火记录,潮汐议会测潮条例,灰烬台地的低语,旧港的黑衣旅人"
+  ) {
+    throw new Error("文本列表拼音序验证失败")
+  }
+
   const textEntry = texts.find((t) => t.title === "旧港的黑衣旅人")
   if (!textEntry) throw new Error("未找到测试文本")
   const blocks = await store.getEntryBlocks(textEntry.id)
@@ -66,9 +83,39 @@ async function main() {
     throw new Error("别名渲染验证失败：renderMarkdownContent 应按原文显示别名")
   }
 
+  // ========== 钉定写法（[[名称@slug]]）显示文字回归：显示文字必须与原文一致，不得出现 @slug ==========
+
+  const shenyanSlug = shenyan[0].slug
+  const pinIntroHtml = await renderMarkdownContent(store, `参见[[沈砚@${shenyanSlug}]]。`, { publicOnly: true })
+  console.log("钉定链接按名称部分渲染（应为 true）:", pinIntroHtml.includes(">沈砚</a>"))
+  if (!pinIntroHtml.includes(">沈砚</a>")) {
+    throw new Error("钉定显示文字验证失败：[[沈砚@slug]] 应显示为“沈砚”")
+  }
+  if (pinIntroHtml.includes("@")) {
+    throw new Error("钉定显示文字验证失败：显示文字不应包含 @slug")
+  }
+  if (!pinIntroHtml.includes(`href="/entities/person/${shenyanSlug}"`)) {
+    throw new Error("钉定显示文字验证失败：[[沈砚@slug]] 应链接到沈砚")
+  }
+
+  const pinDisplayHtml = await renderMarkdownContent(store, `参见[[沈砚@${shenyanSlug}|黑衣人]]。`, { publicOnly: true })
+  console.log("钉定 + 显式显示文字优先（应为 true）:", pinDisplayHtml.includes(">黑衣人</a>"))
+  if (!pinDisplayHtml.includes(">黑衣人</a>")) {
+    throw new Error("钉定显示文字验证失败：显式 |显示文字 应优先")
+  }
+
+  const draftPinHtml = await renderMarkdownContent(store, `见[[文本:北方灯塔守则@${t3.slug}]]。`, { publicOnly: true })
+  console.log("钉定草稿目标公开页降级显示名称部分（应为 true）:", draftPinHtml.includes("北方灯塔守则"))
+  if (!draftPinHtml.includes("北方灯塔守则") || draftPinHtml.includes("wiki-link")) {
+    throw new Error("钉定显示文字验证失败：草稿目标公开页应降级为名称部分纯文本")
+  }
+  if (draftPinHtml.includes("@")) {
+    throw new Error("钉定显示文字验证失败：草稿降级显示不应包含 @slug")
+  }
+
   // ========== v2 验证 ==========
 
-  // 场景 F：人物种族
+  // 场景 F：人物种族 + 现状
   const shenyanEntity = await store.getEntityById(shenyan[0].id)
   console.log("\n--- v2 验证 ---")
   console.log("沈砚种族（应为 人族）:", shenyanEntity?.race)
@@ -76,6 +123,10 @@ async function main() {
   console.log("铜舌种族（应为 机关族）:", tongtse?.race)
   if (shenyanEntity?.race !== "人族") throw new Error("种族验证失败：沈砚")
   if (tongtse?.race !== "机关族") throw new Error("种族验证失败：铜舌")
+  console.log("沈砚现状（应为 下落不明）:", shenyanEntity?.lifeStatus)
+  if (shenyanEntity?.lifeStatus !== "下落不明") {
+    throw new Error("人物现状字段验证失败：lifeStatus 应为“下落不明”")
+  }
 
   // 场景 G：所属势力与势力成员反向
   const shenyanFactions = await store.getEntityFactions(shenyan[0].id)
@@ -177,14 +228,18 @@ async function main() {
   // 导出验证
   const exportData = await store.exportAll()
   console.log("\n导出验证：")
-  console.log("  schemaVersion（应为 2）:", exportData.schemaVersion)
+  console.log("  schemaVersion（应为 4）:", exportData.schemaVersion)
   console.log("  factions 数（应为 5）:", exportData.factions.length)
   console.log("  relations 数（应为 3）:", exportData.relations.length)
   console.log("  textEntityAssociations 数（应为 2）:", exportData.textEntityAssociations.length)
-  if (exportData.schemaVersion !== 2) throw new Error("导出 schemaVersion 验证失败")
+  console.log("  quests 数（应为 4）:", exportData.quests.length)
+  console.log("  questCharacters 数（应为 7）:", exportData.questCharacters.length)
+  if (exportData.schemaVersion !== 4) throw new Error("导出 schemaVersion 验证失败")
   if (exportData.factions.length !== 5) throw new Error("导出 factions 验证失败")
   if (exportData.relations.length !== 3) throw new Error("导出 relations 验证失败")
   if (exportData.textEntityAssociations.length !== 2) throw new Error("导出 textEntityAssociations 验证失败")
+  if (exportData.quests.length !== 4) throw new Error("导出 quests 验证失败")
+  if (exportData.questCharacters.length !== 7) throw new Error("导出 questCharacters 验证失败")
 
   // ========== 数据一致性：entity_factions 类型约束 ==========
 
@@ -214,7 +269,157 @@ async function main() {
     throw new Error(`entity_factions 类型一致性验证失败：\n${[...invalidMemberRows, ...invalidTargetRows].join("\n")}`)
   }
 
-  console.log("\n验证完成（含 v2 扩展）。")
+  // ========== v5 验证：任务为独立于实体与文本的第三种数据存在 ==========
+
+  console.log("\n--- v5 验证 ---")
+
+  const quests = await store.listQuests({})
+  console.log("任务总数（应为 4）:", quests.length)
+  if (quests.length !== 4) throw new Error("任务数量验证失败")
+
+  // 场景 K：任务字段
+  const huozhongQuest = quests.find((quest) => quest.name === "雾中的火种")
+  if (!huozhongQuest) throw new Error("未找到任务“雾中的火种”")
+  console.log(
+    "雾中的火种（应为 main/第一篇章/进程二/排序 2）:",
+    huozhongQuest.category, "/", huozhongQuest.chapter, "/", huozhongQuest.stage, "/", huozhongQuest.sortOrder
+  )
+  if (huozhongQuest.category !== "main") throw new Error("任务分类验证失败")
+  if (huozhongQuest.chapter !== "第一篇章") throw new Error("任务篇章验证失败")
+  if (huozhongQuest.stage !== "进程二") throw new Error("任务进程验证失败")
+  if (huozhongQuest.sortOrder !== 2) throw new Error("任务排序验证失败：应为 2")
+  const jingzhaoQuest = quests.find((quest) => quest.name === "镜井的月影")!
+  if (jingzhaoQuest.category !== "personal" || jingzhaoQuest.sortOrder !== 1) {
+    throw new Error("个人任务字段验证失败")
+  }
+
+  // 场景 L：任务出场人物（正向）
+  const huozhongCharacters = await store.getQuestCharacters(huozhongQuest.id)
+  console.log("雾中的火种出场人物数（应为 2）:", huozhongCharacters.length)
+  const huozhongRoles = new Map(huozhongCharacters.map((c) => [c.personId, c.role]))
+  const luchenzhouQuestRole = huozhongRoles.get(luchenzhou.id)
+  const shenyanQuestRole = huozhongRoles.get(shenyan[0].id)
+  console.log("  陆沉舟角色（应为 执行者）:", luchenzhouQuestRole)
+  console.log("  沈砚角色（应为 线索人物）:", shenyanQuestRole)
+  if (luchenzhouQuestRole !== "执行者") throw new Error("任务出场人物验证失败：陆沉舟")
+  if (shenyanQuestRole !== "线索人物") throw new Error("任务出场人物验证失败：沈砚")
+
+  // 场景 M：人物相关任务（反向）
+  const wenshuangEntity = entities.find((e) => e.name === "闻霜")!
+  const alanEntity = entities.find((e) => e.name === "阿澜")!
+  const shenyanQuests = await store.getQuestsForPerson(shenyan[0].id)
+  console.log("沈砚相关任务数（应为 2）:", shenyanQuests.length)
+  const shenyanQuestNames = shenyanQuests.map((r) => r.quest.name)
+  console.log("  相关任务列表:", shenyanQuestNames.join("、"))
+  if (shenyanQuests.length !== 2) throw new Error("人物相关任务数量验证失败")
+  if (!shenyanQuestNames.includes("雾中的火种") || !shenyanQuestNames.includes("镜井的月影")) {
+    throw new Error("人物相关任务内容验证失败")
+  }
+  // 草稿任务也应返回（published 过滤由页面负责）
+  const wenshuangQuests = await store.getQuestsForPerson(wenshuangEntity.id)
+  console.log("闻霜相关任务数（应为 1，含草稿）:", wenshuangQuests.length)
+  if (wenshuangQuests.length !== 1 || wenshuangQuests[0].quest.status !== "draft") {
+    throw new Error("人物相关任务（草稿返回）验证失败")
+  }
+  // 排序：阿澜的两条任务应按分类固定序（个人 → 日常）
+  const alanQuests = await store.getQuestsForPerson(alanEntity.id)
+  const alanQuestNames = alanQuests.map((r) => r.quest.name)
+  console.log("阿澜相关任务顺序（应为 镜井的月影、例行的潮信）:", alanQuestNames.join("、"))
+  if (alanQuestNames.join(",") !== "镜井的月影,例行的潮信") {
+    throw new Error("人物相关任务排序验证失败")
+  }
+
+  // 场景 N：任务不再参与实体名称解析（wiki 链接不支持指向任务）
+  const questCandidates = await store.findEntityCandidates("雾中的火种")
+  console.log("按标准名解析任务[雾中的火种]（应为 0）:", questCandidates.length)
+  if (questCandidates.length !== 0) {
+    throw new Error("任务不应再作为实体参与名称解析")
+  }
+  const questLinkHtml = await renderMarkdownContent(store, "参见[[雾中的火种]]。", { publicOnly: true })
+  console.log("[[任务名]]渲染为纯文本（应为 true）:", !questLinkHtml.includes("wiki-link"))
+  if (questLinkHtml.includes("wiki-link")) {
+    throw new Error("任务名称链接应降级为纯文本")
+  }
+  if (!questLinkHtml.includes("雾中的火种")) {
+    throw new Error("任务名称链接降级后应保留显示文字")
+  }
+
+  // 场景 N2：任务↔文本一对多（一个任务对应多篇完整文本）
+  const huozhongTexts = await store.listTextEntries({ questId: huozhongQuest.id })
+  console.log("雾中的火种所属文本数（应为 2）:", huozhongTexts.length)
+  if (huozhongTexts.length !== 2) throw new Error("任务所属文本数量验证失败")
+  const huozhongPublishedTexts = await store.listTextEntries({ questId: huozhongQuest.id, status: "published" })
+  console.log("雾中的火种已发布所属文本（应为 北方灯塔点火记录）:", huozhongPublishedTexts.map((t) => t.title).join("、"))
+  if (huozhongPublishedTexts.length !== 1 || huozhongPublishedTexts[0].title !== "北方灯塔点火记录") {
+    throw new Error("任务所属文本（published 过滤）验证失败")
+  }
+  const t3Entry = texts.find((t) => t.title === "北方灯塔守则")!
+  if (t3Entry.questId !== huozhongQuest.id) throw new Error("文本 questId 落库验证失败")
+
+  // 任务列表排序：分类固定序（主线 → 个人 → 次要 → 日常）
+  const questNameOrder = quests.map((quest) => quest.name)
+  console.log("任务列表顺序（应为 雾中的火种、镜井的月影、未公开的委托、例行的潮信）:", questNameOrder.join("、"))
+  if (questNameOrder.join(",") !== "雾中的火种,镜井的月影,未公开的委托,例行的潮信") {
+    throw new Error("任务列表排序验证失败")
+  }
+
+  // 公开解析：已发布任务按 slug 命中，草稿任务隐形
+  const publishedQuests = await store.listQuests({ status: "published" })
+  if (publishedQuests.length !== 3) throw new Error("已发布任务数应为 3")
+  const huozhongBySlug = await store.getQuestBySlug(huozhongQuest.slug)
+  if (!huozhongBySlug || huozhongBySlug.id !== huozhongQuest.id) throw new Error("getQuestBySlug 失败")
+  const draftQuest = quests.find((quest) => quest.name === "未公开的委托")!
+  const draftBySlug = await store.getQuestBySlug(draftQuest.slug)
+  if (draftBySlug) throw new Error("草稿任务公开解析应返回 null")
+
+  // 场景 O：约束——任务标准名唯一 / 出场人物必须是人物 / 分类必须合法
+  let dupThrew = false
+  try {
+    await store.createQuest({
+      name: "雾中的火种",
+      category: "main",
+      status: "draft",
+    })
+  } catch {
+    dupThrew = true
+  }
+  console.log("同名任务创建被拒绝（应为 true）:", dupThrew)
+  if (!dupThrew) throw new Error("任务标准名唯一性验证失败")
+
+  const factionEntity = entities.find((e) => e.name === "潮汐议会")!
+  let badPersonThrew = false
+  try {
+    await store.createQuest({
+      name: "非法关联的任务",
+      category: "main",
+      persons: [{ personId: factionEntity.id, role: "" }],
+      status: "draft",
+    })
+  } catch {
+    badPersonThrew = true
+  }
+  console.log("出场人物非人物被拒绝（应为 true）:", badPersonThrew)
+  if (!badPersonThrew) throw new Error("任务出场人物类型校验失败")
+
+  let badCategoryThrew = false
+  try {
+    await store.createQuest({
+      name: "非法分类的任务",
+      category: "unknown",
+      status: "draft",
+    })
+  } catch {
+    badCategoryThrew = true
+  }
+  console.log("非法任务分类被拒绝（应为 true）:", badCategoryThrew)
+  if (!badCategoryThrew) throw new Error("任务分类校验失败")
+
+  // 场景 P：非法创建失败后不应留下脏行（全量替换语义）
+  const finalQuestCount = await store.listQuests({})
+  console.log("任务总数（应为 4）:", finalQuestCount.length)
+  if (finalQuestCount.length !== 4) throw new Error("任务数量验证失败")
+
+  console.log("\n验证完成（含 v2/v5 扩展）。")
 }
 
 main().catch((err) => {

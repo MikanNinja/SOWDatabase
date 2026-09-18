@@ -7,6 +7,9 @@ import type {
   ExportData,
   LinkCandidate,
   PersonRelation,
+  Quest,
+  QuestCharacter,
+  QuestPersonRef,
   RelatedBlock,
   SaveTextResult,
   Settings,
@@ -23,10 +26,18 @@ export interface ListEntitiesOpts {
   deletedOnly?: boolean
 }
 
+export interface ListQuestsOpts {
+  status?: ContentStatus
+  includeDeleted?: boolean
+  deletedOnly?: boolean
+}
+
 export interface ListTextsOpts {
   category?: string
   sourceName?: string
   status?: ContentStatus
+  /** 按所属任务过滤（v5：text_entries.quest_id） */
+  questId?: string
   search?: string
   includeDeleted?: boolean
   deletedOnly?: boolean
@@ -42,6 +53,31 @@ export interface RelationInput {
   toId: string
   kind: string
   reverseKind?: string
+}
+
+/** 任务↔人物关联的写入项 */
+export interface QuestPersonInput {
+  personId: string
+  role?: string
+}
+
+/** 任务写入项（v5：任务为独立数据存在） */
+export interface QuestInput {
+  slug?: string
+  name: string
+  /** 任务分类（机器键，非法值抛错） */
+  category?: string
+  /** 篇章（自由文字） */
+  chapter?: string
+  /** 进程（自由文字） */
+  stage?: string
+  /** 同分类内展示排序（可空） */
+  sortOrder?: number | null
+  /** 补充说明（支持受限 Markdown） */
+  note?: string
+  status?: ContentStatus
+  /** 出场人物列表（保存时全量替换） */
+  persons?: QuestPersonInput[]
 }
 
 /** 关系记录 + 对端人物实体信息，用于双向展示 */
@@ -99,6 +135,8 @@ export interface EntityInput {
   /** 人物专属：死亡于（关联地点 id + 自由文本兜底） */
   deathPlaceId?: string | null
   deathPlaceFree?: string
+  /** 人物专属：现状（生死状况，自由文本，可留空） */
+  lifeStatus?: string
   /** 人物专属：所属势力列表 */
   factions?: FactionInput[]
   status?: ContentStatus
@@ -114,6 +152,13 @@ export interface TextEntryInput {
   ingameLocation: string
   note: string
   body: string
+  /**
+   * 所属任务 id（v5）。语义：
+   * - 创建（id 为 null）：undefined/null 均表示不属于任何任务；
+   * - 更新：undefined 表示保持现有值不变（主表单不触碰该字段）；null 表示清除；
+   *   传入非空 id 时校验任务存在并写入。
+   */
+  questId?: string | null
   status: ContentStatus
 }
 
@@ -162,6 +207,24 @@ export interface Store {
   /** 删除人物时清理其相关关系 */
   deleteRelationsForPerson(personId: string): Promise<void>
 
+  // v5：任务（独立于实体的第三种数据存在）
+  /** 任务列表（分类固定序 → 展示排序 → 篇章 → 进程 → 名称拼音） */
+  listQuests(opts?: ListQuestsOpts): Promise<Quest[]>
+  getQuestById(id: string): Promise<Quest | null>
+  getQuestBySlug(slug: string, opts?: { includeDraft?: boolean }): Promise<Quest | null>
+  createQuest(input: QuestInput): Promise<Quest>
+  updateQuest(id: string, input: QuestInput): Promise<Quest>
+  deleteQuest(id: string): Promise<void>
+  restoreQuest(id: string): Promise<void>
+  /** 任务计数（含 status 过滤，用于导航与统计） */
+  getQuestCount(status?: ContentStatus): Promise<number>
+
+  // v4：任务↔人物关联
+  /** 获取任务的出场人物列表（含人物实体与角色/备注），仅未删除人物 */
+  getQuestCharacters(questId: string): Promise<QuestCharacter[]>
+  /** 获取人物的相关任务（反向），仅未删除任务；published 过滤由页面负责 */
+  getQuestsForPerson(personId: string): Promise<QuestPersonRef[]>
+
   // v2：整篇级关联（文本↔实体）
   /** 获取文本条目的整篇级关联列表 */
   getTextEntityAssociations(entryId: string): Promise<TextEntityAssociation[]>
@@ -180,6 +243,8 @@ export interface Store {
   saveTextEntry(id: string | null, input: TextEntryInput): Promise<SaveTextResult>
   deleteTextEntry(id: string): Promise<void>
   restoreTextEntry(id: string): Promise<void>
+  /** 设置文本的所属任务（v5：一对多，一篇文本至多属于一个任务；null 表示清除） */
+  setTextEntryQuest(entryId: string, questId: string | null): Promise<void>
 
   getEntryBlocks(entryId: string): Promise<BlockWithLinks[]>
   setManualLinks(blockId: string, entityIds: string[]): Promise<void>

@@ -1,23 +1,15 @@
 import Link from "next/link"
 import { getStore } from "@/lib/db/store"
+import { compareZh } from "@/lib/collate"
 import Breadcrumb from "@/components/Breadcrumb"
+import TableFilter from "@/components/TableFilter"
 
-export const dynamic = "force-dynamic"
-
-export default async function TextListPage(props: {
-  searchParams: Promise<{ q?: string; category?: string; sourceName?: string }>
-}) {
-  const { q, category, sourceName } = await props.searchParams
+export default async function TextListPage() {
   const store = await getStore()
-  const categories = await store.listTextCategories()
-  const search = q?.trim() || undefined
-  const source = sourceName?.trim() || undefined
-  const texts = await store.listTextEntries({
-    status: "published",
-    category: category || undefined,
-    sourceName: source,
-    search,
-  })
+  const texts = await store.listTextEntries({ status: "published" })
+  const categories = [
+    ...new Set(texts.map((text) => text.sourceCategory).filter(Boolean)),
+  ].sort(compareZh)
 
   return (
     <div className="container">
@@ -28,42 +20,56 @@ export default async function TextListPage(props: {
       </header>
 
       <div className="toolbar">
-        <form action="/texts" method="get" className="search-form" role="search">
+        <form action="/texts" method="get" className="search-form" role="search" autoComplete="off">
           <input
             type="search"
             name="q"
-            defaultValue={search ?? ""}
             placeholder="按标题搜索"
             aria-label="按标题搜索"
           />
           <input
             type="text"
             name="sourceName"
-            defaultValue={source ?? ""}
             placeholder="来源名称"
             aria-label="按来源名称筛选"
           />
-          {category ? <input type="hidden" name="category" value={category} /> : null}
           <button type="submit">筛选</button>
         </form>
         <nav className="toolbar-links" aria-label="文本来源类别">
-          <Link href="/texts">{!category ? "[全部]" : "全部"}</Link>
+          <Link href="/texts">全部</Link>
           {categories.map((currentCategory) => (
             <Link
               key={currentCategory}
               href={`/texts?category=${encodeURIComponent(currentCategory)}`}
             >
-              {category === currentCategory ? `[${currentCategory}]` : currentCategory}
+              {currentCategory}
             </Link>
           ))}
         </nav>
       </div>
 
+      <TableFilter
+        filters={[
+          { key: "q", attr: "q", mode: "substring" },
+          { key: "sourceName", attr: "sourceName", mode: "substring" },
+          { key: "category", attr: "category", mode: "exact" },
+        ]}
+        rows={texts.map((text) => ({
+          id: text.id,
+          attrs: {
+            q: text.title.toLowerCase(),
+            sourceName: text.sourceName.toLowerCase(),
+            category: text.sourceCategory,
+          },
+        }))}
+        basePath="/texts"
+      />
+
       {texts.length === 0 ? (
         <p className="empty">暂无符合条件的记录。</p>
       ) : (
         <div className="table-wrap">
-          <table className="catalog-table">
+          <table className="catalog-table" data-filter-table="">
             <thead>
               <tr>
                 <th scope="col">标题</th>
@@ -73,7 +79,12 @@ export default async function TextListPage(props: {
             </thead>
             <tbody>
               {texts.map((text) => (
-                <tr key={text.id}>
+                <tr
+                  key={text.id}
+                  data-q={text.title.toLowerCase()}
+                  data-sourceName={text.sourceName.toLowerCase()}
+                  data-category={text.sourceCategory}
+                >
                   <td>
                     <Link href={`/texts/${text.slug}`}>{text.title}</Link>
                   </td>

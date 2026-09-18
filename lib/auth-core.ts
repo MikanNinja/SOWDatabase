@@ -32,7 +32,7 @@ export async function verifySessionToken(token: string): Promise<boolean> {
 
 export async function checkCredentials(username: string, password: string): Promise<boolean> {
   const expectedUser = process.env.ADMIN_USERNAME || "admin"
-  const expectedPass = process.env.ADMIN_PASSWORD || ""
+  const expectedPass = process.env.ADMIN_PASSWORD || "admin"
   if (!expectedPass && process.env.NODE_ENV === "production") {
     throw new Error("生产环境必须配置 ADMIN_PASSWORD")
   }

@@ -19,6 +19,7 @@ export default async function AdminLayout({
         <nav>
           <Link href="/admin">概览</Link>
           <Link href="/admin/entities">实体</Link>
+          <Link href="/admin/quests">任务</Link>
           <Link href="/admin/texts">文本</Link>
           <Link href="/admin/settings">站点设置</Link>
           <form action={logoutAction}>

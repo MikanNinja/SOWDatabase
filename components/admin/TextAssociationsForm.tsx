@@ -1,7 +1,8 @@
 "use client"
 
 import { useState } from "react"
-import type { TextEntityAssociation } from "@/lib/db/types"
+import type { EntityType, TextEntityAssociation } from "@/lib/db/types"
+import { ENTITY_TYPE_LABELS } from "@/lib/db/types"
 import { saveTextAssociationsAction } from "@/app/admin/actions"
 import SubmitButton from "@/components/admin/SubmitButton"
 
@@ -44,7 +45,7 @@ export default function TextAssociationsForm({
   const associationsJson = JSON.stringify(rows.filter((r) => r.targetId).map((r) => ({ targetId: r.targetId })))
 
   return (
-    <form action={saveTextAssociationsAction} className="form-grid">
+    <form action={saveTextAssociationsAction} className="form-grid" autoComplete="off">
       <input type="hidden" name="entryId" value={entryId} />
       <input type="hidden" name="associations" value={associationsJson} />
       <div className="multi-row-editor">
@@ -59,8 +60,8 @@ export default function TextAssociationsForm({
               aria-label={`整篇关联目标 ${index + 1}`}
             >
               <option value="">— 选择实体 —</option>
-              {(["person", "place", "faction"] as const).map((type) => (
-                <optgroup key={type} label={type === "person" ? "人物" : type === "place" ? "地点" : "势力"}>
+              {(["person", "place", "faction"] as const).map((type: EntityType) => (
+                <optgroup key={type} label={ENTITY_TYPE_LABELS[type]}>
                   {entities
                     .filter((e) => e.type === type)
                     .map((e) => (

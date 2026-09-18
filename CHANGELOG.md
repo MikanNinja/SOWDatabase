@@ -1,5 +1,59 @@
 # 修改记录
 
+## 2026-09-19：「任务」从实体系统拆分为独立数据存在（v5）
+
+- **模型重构**：任务不再是第四种实体类型，而是独立于「实体」「文本」的第三种数据存在。动因：任务不具备实体的部分特质——无任何文本需要引用任务名称/别名（拆分前 `content_links` 与整篇关联中 quest 目标为 0 条），且任务与文本的预期关联是一对多（一个任务对应多篇完整文本），与实体↔文本的多对多关联语义不同。
+- **数据层**：新表 `quests`（id/slug/name/category/category CHECK 六值枚举/chapter/stage/sort_order/note/status/created_at/updated_at/deleted），标准名部分唯一索引 `idx_quests_name_unique`；`entities.type` 收窄为 `person|place|faction`（CHECK 去 'quest'）并删除 4 个任务专属列；`quest_characters.quest_id` 外键改指 `quests(id)`（保留任务原 id，18 条出场人物关联原值平移）；`text_entries` 新增 `quest_id` 外键（`ON DELETE SET NULL`）实现严格一对多。任务不再参与 wiki 链接解析、实体层级与别名（拆分前仅 1 条任务别名，已并入该任务补充说明留档）。
+- **迁移**：`SQLiteStore` 构造器按「quests 表是否存在 + entities 建表 SQL 是否含 'quest'」判定库版本，v3- 旧库先走原 v4 补列/重建路径再进入 v5 拆分；v5 迁移在事务内完成（建 quests 迁数据 → 整表重建 entities → 重建 quest_characters 改外键），immediate 事务 + 事务内二次校验抵御 `next build` 多 worker 并发打开同一库的竞态，全部 ALTER 幂等兜底。已对生产库执行（186 实体无损 → 181 实体 + 5 任务，integrity/FK 校验通过，8 进程并发演练通过）；迁移前快照保留于 `data/app.backup-pre-v5.db`。
+- **文本↔任务**：文本编辑页在"整篇关联"之后单设「所属任务」section（下拉选择 + 独立保存动作，创建文本时不指定；主表单保存不触碰该字段，不会误清关联），一篇文本至多属于一个任务，`saveTextEntry` 在未显式传值时保留现有 `quest_id`；任务详情页新增「所属文本」区（仅已发布），公开文本页新增「所属任务」元信息行；任务编辑页列出其全部所属文本。整篇级关联与 wiki 链接中的任务类型随之移除。
+- **后台**：新增 `/admin/quests` 列表/新建/编辑三页面与 `QuestForm` 组件（名称/分类/slug/状态/篇章/进程/展示排序/出场人物/补充说明），`saveQuestAction`/`deleteQuestAction`/`restoreQuestAction` 全新实现；`EntityForm` 削减任务区块，`saveEntityAction` 类型白名单收窄；后台概览统计表任务独立成行。
+- **前台**：公开路由 `/entities/quest/*` 移除，新增 `/quests` 分类分组列表与 `/quests/[slug]` 详情页（任务分类/篇章/进程/出场人物/所属文本）；导航「任务」计数改指 `/quests`；检索结果新增独立任务分组（`search-index.json` 增 `quests` 数组）；实体列表页工具栏补「任务」入口；人物详情页「相关任务」表格链接改指 `/quests/*`。
+- **脚本**：`seed.ts` 改用任务独立 API 建 fixture（4 任务 + 7 条出场人物关联 + 2 篇文本挂任务展示一对多），`clearData` 增加清理 `quests`；`verify-data.ts` 重写为 v5 断言（任务字段读写、正反向关联、一对多文本、草稿隐形、任务不再参与实体名称解析、约束拒绝、导出 schemaVersion 4）；移除已失效的 `npm run migrate:v3`（v4 迁移由构造器自动完成，脚本随 v5 路径一并退役）。`ExportData.schemaVersion` 升至 4 并新增 `quests` 数组（导出格式变化，下游注意）。
+- **旧路径断链**：`/entities/quest/*` 五条旧公开页在重建后不再生成，已确认接受断链（拆分前现网文本对任务的链接为 0 条）。
+- 依弃用策略仅维护 SQLite 后端：`lib/db/supabase.ts` 仅补类型占位（新方法抛错提示已弃用），`supabase/schema.sql` 不更新。
+
+## 2026-09-14：新增「任务」实体（第四种实体类型）
+
+- 新实体类型 `quest`（标签「任务」），与其他实体公开行为一致：拥有公开列表页/详情页、参与检索与导航计数、可被文本 `[[任务名]]` 引用；信息不全的任务保持「草稿」状态即自动隐形（无公开页、搜不到、链接降级纯文本、不上人物页），补全后逐个发布。
+- 任务专属字段（其余类型强制空值）：`quest_category`（封闭六类枚举：主线/个人/重要/次要/日常/活动，存储机器键 `main/personal/major/minor/daily/event`）、`quest_chapter`（篇章，自由文本）、`quest_stage`（进程，自由文本，主要主线用）、`quest_order`（同分类内展示排序，可空，中文数字篇章名无法按拼音自然排序，故沿用 ordinal 模式）。任务不参与 `parent_id` 层级。
+- 任务↔人物关联：新表 `quest_characters`（quest_id / person_id / role / ordinal），模式与 `entity_factions` 一致——后台任务编辑页以多行编辑器（人物选择＋角色/备注）维护，保存时全量替换；人物页新增独立「相关任务」表格区（任务名链接/分类/篇章/进程/角色），排序为分类固定序 → quest_order → 篇章 → 进程 → 关联序 → 名称拼音，仅显示已发布任务；任务详情页新增「任务分类/篇章/进程」元信息行与「出场人物」行（镜像势力「成员」行）。
+- 迁移：`entities.type` 的 CHECK 约束无法 ALTER 修改，`SQLiteStore` 构造器检测旧约束后**整表重建**（事务内建新表 → 显式列名拷贝 → 删旧表 → 改名 → 重跑 schema 重建索引；`foreign_keys` 事务外切换）；四任务列经既有 ALTER 补齐机制自动添加；新表由 schema 幂等创建。已对生产库执行（178 实体无损，integrity/FK 校验通过），并对 v2 时代旧库（缺 `life_status`）验证全路径迁移。新增 `npm run migrate:v3`（幂等薄封装，可显式触发与校验）。
+- 后台：实体类型选择/列表筛选/概览统计自动出现「任务」（`ENTITY_TYPES` 驱动）；`EntityForm` 新增任务区块（分类/篇章/进程/展示排序/出场人物）；`saveEntityAction` 解析并校验新字段（分类非法回退主线且服务端归一，出场人物必须为未删除人物类型，非法创建不落库）。人物后台编辑页新增「相关任务」只读反向视图（链接到后台任务编辑页）。
+- 前台：导航新增「任务」计数；检索结果新增任务分组；文本编辑页的段落手动关联与整篇关联选择器加入任务类型（长篇资料区在任务页通用渲染）；人物详情页新增「相关任务」表格区（置于长篇资料后、相关文本前）；首页/检索页文案加入「任务」。
+- 写入校验：任务同类标准名沿用全局唯一规则（同名任务抛错）；出场人物非法引用抛错且不落库（createEntity 在插入实体前预校验，避免脏行）；分类非法抛错。
+- 数据配套：`seed.ts` 新增 4 个任务 fixture（主线带篇章+进程、个人带篇章、日常、草稿）与 7 条出场人物关联，`clearData` 补充清理 `quest_characters`；`verify-data.ts` 新增 v4 场景断言（字段读写、正反向关联、排序、发布/草稿链接渲染差异、约束拒绝、导出 schemaVersion 3）；`ExportData` 新增 `questCharacters`，schemaVersion 升 3。
+- 依弃用策略仅维护 SQLite 后端：`lib/db/supabase.ts` 仅补类型占位（新方法抛错提示已弃用），`supabase/schema.sql` 不更新。
+
+## 2026-09-13：列表排序改为拼音序
+
+- 全部名称类列表由 SQLite `COLLATE NOCASE`（汉字等于 Unicode 码点序≈部首笔画序，对用户无意义）改为中文拼音序：新增 `lib/collate.ts`，基于 Node 内置 `Intl.Collator("zh-Hans-CN")`（full-ICU），零新依赖。
+- `SQLiteStore` 八处排序改为拼音序：`listEntities`（类型分组内按名称拼音）、`searchEntitySuggestions`（SQL 保留 LIMIT 选取，返回后按拼音重排）、`getFactionMembers` 与 `getWholeEntryTextsForEntity`（ordinal 优先、名称/标题拼音次之）、`getEntityChildren`、`getRelatedBlocksForEntity`（标题拼音 + 段落序）、`listTextCategories`、`listTextEntries`。
+- **文本列表排序语义变更**：由"最近更新优先"（`ORDER BY updated_at DESC`）改为标题拼音序，与实体目录风格统一。后台文本管理页跟随；后台首页"最近修改"自行按时间重排，不受影响。
+- 影响面（全部经 store 一致跟随）：公开三类实体列表、实体详情页"下级/成员/长篇资料/相关文本"、搜索建议与搜索结果顺序、`search-index.json`、后台实体/文本管理页、表单下拉框、文本来源类别导航。
+- 多音字取舍：ICU 按单字固定读音排序（如"重"固定 chóng），个别词落位可能与直觉不同，但确定可复现；如需个别钉位后续可加手工覆盖表（本次不做）。标点开头的名称排最前，拉丁字母名按字母值与拼音混排。
+- 唯一性校验（`assertUniqueNameInType` 与部分唯一索引）是判等逻辑而非排序，未改动；Supabase 相关文件依弃用策略不动。
+- `scripts/verify-data.ts` 新增回归断言（人物 阿澜→陆沉舟→沈砚→铜舌→闻霜；已发布文本 白潮港的测潮记录→潮汐议会测潮条例→灰烬台地的低语→旧港的黑衣旅人）；临时库 seed + verify 全绿，生产库只读抽查各类型拼音序正常。
+- 依赖条件：拼音序依赖 Node 自带 full-ICU（本机 Node 24 / ICU 78.3 实测）；若未来换用 small-icu 构建的 Node 会退回码点序。
+
+## 2026-09-13：人物新增「现状」字段
+
+- 人物实体新增「现状」（`life_status` / `lifeStatus`）字段：单值自由文本，默认空、手动输入，用于表达"已故但时间地点不详""下落不明""生死未卜"等现有出生/死亡字段无法覆盖的生死状况。
+- 数据层：`lib/db/schema.ts` 建表语句加列；`SQLiteStore` 构造函数对既有库自动 `ALTER TABLE ADD COLUMN life_status TEXT NOT NULL DEFAULT ''`（生产库启动即迁移，存量数据默认空串，无损）；`Entity` / `EntityInput` 增加可选字段 `lifeStatus`；`createEntity` / `updateEntity` 写入该列（实体查询均为 `SELECT *`，无需改动）。
+- 后台表单：`EntityForm` 人物区块「死亡」之后新增「现状」单行文本输入（不加提示文字）；非人物类型不渲染该输入，保存时自动清空，与种族字段行为一致。
+- 公开实体页：人物详情页元信息在「死亡于」行之后展示「现状」，留空不显示。
+- 种子与验收：`seed.ts` 为沈砚填入 `lifeStatus: "下落不明"`；`verify-data.ts` 在"场景 F"新增断言，临时库 `npm run seed` + `npm run verify` 全绿。
+- 依既定策略仅维护 SQLite 后端，Supabase 相关文件不改动；JSON 导出走 `exportAll` 自动携带新字段。
+
+## 2026-09-08：命名唯一性与链接钉定消歧
+
+- **同类实体标准名唯一**：`SQLiteStore` 的 `createEntity` / `updateEntity` / `restoreEntity` 在写入前校验同类型、未删除实体中不存在同名标准名（`COLLATE NOCASE`，与 `findEntityCandidates` 匹配口径一致），命中即抛错并指出冲突实体；`lib/db/schema.ts` 新增部分唯一索引 `idx_entities_type_name_unique (type, name COLLATE NOCASE) WHERE deleted = 0` 兜底。别名、跨类型名称不查重（现库经审计确认存在合法的“势力名=地点名”等形态）。
+- **顺手修复存量隐患**：`SQLiteStore.uniqueSlug` 原先只对未删除行查 slug 冲突，而 `slug` 的 UNIQUE 是全表约束——软删实体后重建同名实体会直接撞库报 500。现改为全表查重，与约束语义一致。
+- **链接钉定语法**：新增 `[[名称@slug]]` / `[[名称@slug|显示文字]]` / `[[文本:标题@slug]]`，按 slug 直接命中目标实体/文本，用于跨类型同名、名称=别名等场景下消歧；slug 查不到时回退为对名称部分做普通精确匹配。`lib/markdown.ts` 新增 `splitPinnedTarget` 纯函数，`lib/links.ts` 新增统一解析入口 `resolveWikiLink`，`computeLinkIssues`、`renderMarkdownContent` 与 `SQLiteStore.saveTextEntry`（原先三处内联的候选逻辑）统一改走它；钉定写法的显示文字 fallback 取名称部分，不显示 slug。
+- **钉定显示文字与原文一致（渲染层修复）**：落库 displayText 虽已是名称部分，但 `renderEntryBlocks`（正文段落）与 markdown-it 渲染器的降级 fallback 均直接用完整 target，导致 `[[塞什卡@塞什卡-2]]` 在页面上显示为“塞什卡@塞什卡-2”。现 `linkDisplayFallback` 统一先剥 `@slug` 再剥 `文本:` 前缀，markdown-it 渲染器 fallback 改走该函数（顺带修正无 resolve 时文本链接残留“文本:”前缀的旧行为）；显式 `|显示文字` 依旧优先。`scripts/verify-data.ts` 新增回归断言（钉定链接显示名称部分、不得出现 @slug、草稿目标公开页降级为名称纯文本）。
+- 后台文本编辑页的 ambiguous 提示改为列出“类型·名称（slug）”并给出钉定写法示例，按提示改正文即可消歧；实体表单的标准名输入框补充唯一性说明。
+- 新增只读审计脚本 `scripts/check-name-conflicts.ts`（`npx tsx scripts/check-name-conflicts.ts`）：列出同类标准名重复与全部多候选命名。现库审计结果：同类重复 0 组、多候选 8 个（全部为跨类型合法重名）。
+- Supabase 后端弃用：本次及后续改动仅维护 `lib/db/sqlite.ts`，`lib/db/supabase.ts`、`supabase/schema.sql` 与迁移脚本的 Supabase 分支不再更新（仅作历史参考），AGENTS.md 已记录。
+
 ## 2026-09-06：移除后台文本页“批量关联”
 
 - 后台文本编辑页删除“批量关联”区（把单个实体手动关联到全部段落的表单）及其 server action `batchManualLinksAction`；`Store` 接口与 SQLite / Supabase 双后端实现 `batchAddManualLinks` 一并移除，`globals.css` 清理不再使用的 `.batch-link-form` 样式。

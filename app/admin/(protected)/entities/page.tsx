@@ -32,7 +32,7 @@ export default async function AdminEntitiesPage(props: {
       </header>
 
       <div className="admin-toolbar">
-        <form action="/admin/entities" method="get" className="search-form">
+        <form action="/admin/entities" method="get" className="search-form" autoComplete="off">
           <input type="search" name="q" defaultValue={q ?? ""} placeholder="搜索名称或别名" aria-label="搜索" />
           <input type="hidden" name="type" value={type ?? ""} />
           <input type="hidden" name="deleted" value={deleted ?? ""} />
@@ -46,6 +46,7 @@ export default async function AdminEntitiesPage(props: {
             </Link>
           ))}
           <Link href="/admin/entities?deleted=1">{deleted === "1" ? "[已删除]" : "已删除"}</Link>
+          <Link href="/admin/quests">任务</Link>
           <Link href="/admin/entities/new" className="btn primary">新增实体</Link>
         </nav>
       </div>

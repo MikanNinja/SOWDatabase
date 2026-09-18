@@ -58,7 +58,7 @@ export default function EntityForm({
   )
 
   return (
-    <form action={saveEntityAction} className="form-grid">
+    <form action={saveEntityAction} className="form-grid" autoComplete="off">
       {editing && <input type="hidden" name="id" value={entity!.id} />}
       <div className="entity-form-meta">
         <div className="form-field">
@@ -70,6 +70,9 @@ export default function EntityForm({
             required
             defaultValue={entity?.name ?? ""}
           />
+          <span className="hint">
+            标准名在同类实体中必须唯一；别名可与其它实体重名，名称冲突的链接可用 [[名称@slug]] 钉定目标。
+          </span>
         </div>
         <div className="form-field">
           <label htmlFor="type">类型 *</label>
@@ -276,6 +279,16 @@ export default function EntityForm({
                 aria-label="死亡于（自由文本）"
               />
             </div>
+          </div>
+
+          <div className="form-field">
+            <label htmlFor="lifeStatus">现状</label>
+            <input
+              type="text"
+              id="lifeStatus"
+              name="lifeStatus"
+              defaultValue={entity?.lifeStatus ?? ""}
+            />
           </div>
         </>
       )}

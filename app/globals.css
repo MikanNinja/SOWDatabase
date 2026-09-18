@@ -778,6 +778,7 @@ h3 {
 
 .form-field input[type="text"],
 .form-field input[type="password"],
+.form-field input[type="number"],
 .form-field textarea,
 .form-field select {
   width: 100%;
@@ -996,7 +997,8 @@ h3 {
 }
 
 .entity-form-meta,
-.text-form-meta {
+.text-form-meta,
+.form-field-pair {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.7rem 1rem;
@@ -1075,7 +1077,8 @@ h3 {
   }
 
   .entity-form-meta,
-  .text-form-meta {
+  .text-form-meta,
+  .form-field-pair {
     grid-template-columns: 1fr;
   }
 

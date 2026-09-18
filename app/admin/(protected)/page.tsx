@@ -12,6 +12,10 @@ export default async function AdminDashboardPage() {
   const allTexts = await store.listTextEntries({})
   const publishedTextCount = allTexts.filter((text) => text.status === "published").length
   const draftTextCount = allTexts.filter((text) => text.status === "draft").length
+  // v5：任务（独立于实体）
+  const allQuests = await store.listQuests({})
+  const publishedQuestCount = allQuests.filter((quest) => quest.status === "published").length
+  const draftQuestCount = allQuests.length - publishedQuestCount
   const recentEntities = (await store.listEntities({}))
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
     .slice(0, 5)
@@ -47,6 +51,13 @@ export default async function AdminDashboardPage() {
               <td><Link href={`/admin/entities?type=${type}`}>管理</Link></td>
             </tr>
           ))}
+          <tr>
+            <td>任务</td>
+            <td>{allQuests.length}</td>
+            <td>{publishedQuestCount}</td>
+            <td>{draftQuestCount}</td>
+            <td><Link href="/admin/quests">管理</Link></td>
+          </tr>
           <tr>
             <td>文本条目</td>
             <td>{allTexts.length}</td>

@@ -11,6 +11,27 @@ export const ENTITY_TYPE_LABELS: Record<EntityType, string> = {
   faction: "势力",
 }
 
+/** 任务分类（封闭集合，存储机器键，展示用标签映射） */
+export type QuestCategory = "main" | "personal" | "major" | "minor" | "daily" | "event"
+
+export const QUEST_CATEGORIES: QuestCategory[] = [
+  "main",
+  "personal",
+  "major",
+  "minor",
+  "daily",
+  "event",
+]
+
+export const QUEST_CATEGORY_LABELS: Record<QuestCategory, string> = {
+  main: "主线任务",
+  personal: "个人任务",
+  major: "重要任务",
+  minor: "次要任务",
+  daily: "日常任务",
+  event: "活动任务",
+}
+
 export const STATUS_LABELS: Record<ContentStatus, string> = {
   draft: "草稿",
   published: "已发布",
@@ -51,8 +72,34 @@ export interface Entity {
   deathPlaceId?: string | null
   /** 人物专属：死亡于——自由文本兜底（关联不上地点实体时） */
   deathPlaceFree?: string
+  /** 人物专属：现状（生死状况，自由文本，可留空） */
+  lifeStatus?: string
   status: ContentStatus
   aliases: string[]
+  createdAt: string
+  updatedAt: string
+}
+
+/**
+ * 任务（v5：独立于实体与文本的第三种数据存在）。
+ * 任务不参与 wiki 链接引用与实体层级，只通过「出场人物」关联人物、
+ * 通过 text_entries.quest_id 一对多关联文本。
+ */
+export interface Quest {
+  id: string
+  slug: string
+  name: string
+  /** 任务分类（机器键，展示用标签映射 QUEST_CATEGORY_LABELS） */
+  category: QuestCategory
+  /** 篇章（自由文字，可留空） */
+  chapter: string
+  /** 进程（自由文字，主要主线任务使用，可留空） */
+  stage: string
+  /** 同分类内展示排序（可空；空值按名称拼音兜底） */
+  sortOrder: number | null
+  /** 补充说明（支持受限 Markdown，可留空） */
+  note: string
+  status: ContentStatus
   createdAt: string
   updatedAt: string
 }
@@ -86,6 +133,29 @@ export interface PersonRelation {
   createdAt: string
 }
 
+/** 任务↔人物关联：任务中出场的人物（v5：quest_id 指向 quests 表） */
+export interface QuestCharacter {
+  id: string
+  /** 任务 id */
+  questId: string
+  /** 人物实体 id */
+  personId: string
+  /** 角色/备注，如“委托人”“队友”“目标”，可留空 */
+  role: string
+  /** 展示排序 */
+  ordinal: number
+}
+
+/** 人物相关任务（反向视图：任务 + 该人物在任务中的角色/备注） */
+export interface QuestPersonRef {
+  /** 任务 */
+  quest: Quest
+  /** 该人物在任务中的角色/备注，可空 */
+  role: string
+  /** 展示排序 */
+  ordinal: number
+}
+
 /** 整篇级关联（v2 新增）：文本条目↔实体 */
 export interface TextEntityAssociation {
   id: string
@@ -106,6 +176,8 @@ export interface TextEntry {
   ingameLocation: string
   note: string
   body: string
+  /** 所属任务 id（v5 新增，可空；一对多：一个任务对应多篇文本） */
+  questId?: string | null
   status: ContentStatus
   createdAt: string
   updatedAt: string
@@ -188,6 +260,8 @@ export interface ExportData {
   exportedAt: string
   settings: Settings
   entities: Entity[]
+  /** v5 新增：任务（独立于实体） */
+  quests: Quest[]
   textEntries: TextEntry[]
   blocks: TextBlock[]
   links: ContentLink[]
@@ -197,4 +271,6 @@ export interface ExportData {
   relations: PersonRelation[]
   /** v2 新增：整篇级关联 */
   textEntityAssociations: TextEntityAssociation[]
+  /** v4 新增：任务↔人物关联 */
+  questCharacters: QuestCharacter[]
 }

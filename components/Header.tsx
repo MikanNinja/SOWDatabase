@@ -5,6 +5,7 @@ export default async function Header() {
   const store = await getStore()
   const settings = await store.getSettings()
   const counts = await store.getEntityCounts("published")
+  const questCount = await store.getQuestCount("published")
 
   return (
     <header className="site-header">
@@ -24,6 +25,9 @@ export default async function Header() {
           </Link>
           <Link href="/entities/faction">
             势力 <span className="nav-count">{counts.faction}</span>
+          </Link>
+          <Link href="/quests">
+            任务 <span className="nav-count">{questCount}</span>
           </Link>
           <Link href="/texts">文本</Link>
           <Link href="/search">检索</Link>

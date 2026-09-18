@@ -32,7 +32,30 @@ export function parseWikiRaw(raw: string): { target: string; display: string | n
 
 export function linkDisplayFallback(display: string | null, target: string): string {
   if (display) return display
-  return target.replace(/^文本:\s*/, "").trim() || target
+  // 钉定写法的显示文字取名称部分，不能把 @slug 带进正文
+  const base = splitPinnedTarget(target)?.base ?? target
+  return base.replace(/^文本:\s*/, "").trim() || base
+}
+
+/** 钉定写法拆解结果：base 为名称部分，slug 为目标唯一标识 */
+export interface PinnedTarget {
+  base: string
+  slug: string
+}
+
+// slug 由 slugify 生成，字符集为字母/数字/下划线/连字符（不含 @）；
+// 以 @ 后缀钉定目标实体/文本，如 [[夜渡者@shen-yan]]、[[文本:标题@text-slug]]，
+// 名称部分不能包含 @（否则会被当作钉定分隔符）
+const PINNED_TARGET_PATTERN = /^([^@]+)@([\p{L}\p{N}_-]+)$/u
+
+/** 拆出钉定写法的 base 与 slug；不匹配（未钉定或格式不符）时返回 null */
+export function splitPinnedTarget(target: string): PinnedTarget | null {
+  const m = PINNED_TARGET_PATTERN.exec((target ?? "").trim())
+  if (!m) return null
+  const base = m[1].trim()
+  const slug = m[2].trim()
+  if (!base || !slug) return null
+  return { base, slug }
 }
 
 export function extractWikiLinks(src: string): WikiLinkRaw[] {
@@ -136,7 +159,7 @@ md.renderer.rules.wiki_link = (
   const raw: string = meta.raw ?? ""
   const target: string = token.content
   const display: string | null = meta.display ?? null
-  const fallback = display ?? target
+  const fallback = linkDisplayFallback(display, target)
   const resolve = (env as { resolve?: LinkResolver } | undefined)?.resolve
   if (resolve) {
     const link: WikiLinkRaw = {

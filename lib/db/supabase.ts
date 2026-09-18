@@ -9,6 +9,9 @@ import type {
   LinkCandidate,
   LinkIssue,
   PersonRelation,
+  Quest,
+  QuestCharacter,
+  QuestPersonRef,
   RelatedBlock,
   SaveTextResult,
   Settings,
@@ -777,6 +780,48 @@ export class SupabaseStore implements Store {
       .or(`from_id.eq.${personId},to_id.eq.${personId}`)
   }
 
+  // ---------- v5：任务（Supabase 后端已弃用，任务未实现，仅保留类型占位） ----------
+
+  async listQuests(): Promise<Quest[]> {
+    throw new Error("Supabase 后端已弃用，不支持任务；请使用默认 SQLite 后端")
+  }
+
+  async getQuestById(): Promise<Quest | null> {
+    throw new Error("Supabase 后端已弃用，不支持任务；请使用默认 SQLite 后端")
+  }
+
+  async getQuestBySlug(): Promise<Quest | null> {
+    throw new Error("Supabase 后端已弃用，不支持任务；请使用默认 SQLite 后端")
+  }
+
+  async createQuest(): Promise<Quest> {
+    throw new Error("Supabase 后端已弃用，不支持任务；请使用默认 SQLite 后端")
+  }
+
+  async updateQuest(): Promise<Quest> {
+    throw new Error("Supabase 后端已弃用，不支持任务；请使用默认 SQLite 后端")
+  }
+
+  async deleteQuest(): Promise<void> {
+    throw new Error("Supabase 后端已弃用，不支持任务；请使用默认 SQLite 后端")
+  }
+
+  async restoreQuest(): Promise<void> {
+    throw new Error("Supabase 后端已弃用，不支持任务；请使用默认 SQLite 后端")
+  }
+
+  async getQuestCount(): Promise<number> {
+    throw new Error("Supabase 后端已弃用，不支持任务；请使用默认 SQLite 后端")
+  }
+
+  async getQuestCharacters(): Promise<QuestCharacter[]> {
+    throw new Error("Supabase 后端已弃用，不支持任务；请使用默认 SQLite 后端")
+  }
+
+  async getQuestsForPerson(): Promise<QuestPersonRef[]> {
+    throw new Error("Supabase 后端已弃用，不支持任务；请使用默认 SQLite 后端")
+  }
+
   private async getRelationById(id: string): Promise<PersonRelation | null> {
     const { data, error } = await this.supabase
       .from("person_relations")
@@ -1165,6 +1210,10 @@ export class SupabaseStore implements Store {
       .eq("id", id)
   }
 
+  async setTextEntryQuest(): Promise<void> {
+    throw new Error("Supabase 后端已弃用，不支持任务；请使用默认 SQLite 后端")
+  }
+
   async getEntryBlocks(entryId: string): Promise<BlockWithLinks[]> {
     const { data: blockData, error: blockError } = await this.supabase
       .from("text_blocks")
@@ -1316,16 +1365,18 @@ export class SupabaseStore implements Store {
       ordinal: r.ordinal,
     }))
     return {
-      schemaVersion: 2,
+      schemaVersion: 4,
       exportedAt: nowIso(),
       settings: await this.getSettings(),
       entities,
+      quests: [],
       textEntries,
       blocks,
       links,
       factions,
       relations,
       textEntityAssociations,
+      questCharacters: [],
     }
   }
 }

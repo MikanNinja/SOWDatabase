@@ -27,7 +27,7 @@ export default async function AdminTextsPage(props: {
       </header>
 
       <div className="admin-toolbar">
-        <form action="/admin/texts" method="get" className="search-form">
+        <form action="/admin/texts" method="get" className="search-form" autoComplete="off">
           <input type="search" name="q" defaultValue={q ?? ""} placeholder="按标题搜索" aria-label="搜索" />
           <input type="hidden" name="category" value={category ?? ""} />
           <input type="hidden" name="deleted" value={deleted ?? ""} />

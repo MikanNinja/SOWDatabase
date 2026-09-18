@@ -17,6 +17,9 @@
 /.next/
 /out/
 
+# static build stash (app/admin + proxy.ts during next build)
+/.static-build/
+
 # production
 /build
 

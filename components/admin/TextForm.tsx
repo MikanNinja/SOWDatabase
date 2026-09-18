@@ -16,7 +16,7 @@ export default function TextForm({
   const allCategories = [...new Set([...CATEGORY_OPTIONS, ...categories])]
 
   return (
-    <form action={saveTextAction} className="form-grid form-grid-wide">
+    <form action={saveTextAction} className="form-grid form-grid-wide" autoComplete="off">
       {editing && <input type="hidden" name="id" value={entry!.id} />}
 
       <div className="text-form-meta">

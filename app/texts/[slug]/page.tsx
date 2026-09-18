@@ -5,7 +5,13 @@ import { ENTITY_TYPE_LABELS } from "@/lib/db/types"
 import { renderEntryBlocks } from "@/lib/render"
 import Breadcrumb from "@/components/Breadcrumb"
 
-export const dynamic = "force-dynamic"
+export const dynamicParams = false
+
+export async function generateStaticParams() {
+  const store = await getStore()
+  const entries = await store.listTextEntries({ status: "published" })
+  return entries.map((entry) => ({ slug: entry.slug }))
+}
 
 function decodeSlug(value: string): string {
   try {
@@ -40,6 +46,10 @@ export default async function TextDetailPage(props: {
     }
   }
 
+  // v5：所属任务（仅已发布任务）
+  const quest = entry.questId ? await store.getQuestById(entry.questId) : null
+  const questShown = quest && quest.status === "published" ? quest : null
+
   const metaRows: [string, string | React.ReactNode][] = [
     ["来源类别", entry.sourceCategory],
     ["来源名称", entry.sourceName],
@@ -58,6 +68,14 @@ export default async function TextDetailPage(props: {
           <span className="muted">（{ENTITY_TYPE_LABELS[entity.type]}）</span>
         </span>
       )),
+    ])
+  }
+
+  // v5：所属任务作为元信息行
+  if (questShown) {
+    metaRows.push([
+      "所属任务",
+      <Link key="quest" href={`/quests/${questShown.slug}`}>{questShown.name}</Link>,
     ])
   }
 

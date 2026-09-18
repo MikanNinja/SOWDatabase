@@ -12,6 +12,10 @@ import type {
   LinkCandidate,
   LinkIssue,
   PersonRelation,
+  Quest,
+  QuestCategory,
+  QuestCharacter,
+  QuestPersonRef,
   RelatedBlock,
   SaveTextResult,
   Settings,
@@ -24,7 +28,10 @@ import type {
   EntityInput,
   FactionInput,
   ListEntitiesOpts,
+  ListQuestsOpts,
   ListTextsOpts,
+  QuestInput,
+  QuestPersonInput,
   RelationInput,
   RelationWithEntity,
   Store,
@@ -32,8 +39,11 @@ import type {
   TextEntryInput,
   WholeEntryText,
 } from "./store"
-import { extractWikiLinks, linkDisplayFallback, splitBlocks } from "../markdown"
+import { extractWikiLinks, splitBlocks } from "../markdown"
+import { resolveWikiLink } from "../links"
 import { linesToList, newId, nowIso, slugify } from "../utils"
+import { compareZh } from "../collate"
+import { ENTITY_TYPE_LABELS, QUEST_CATEGORIES } from "./types"
 
 type EntityRow = {
   id: string
@@ -56,6 +66,22 @@ type EntityRow = {
   birth_place_free: string
   death_place_id: string | null
   death_place_free: string
+  life_status: string
+  status: ContentStatus
+  created_at: string
+  updated_at: string
+  deleted: number
+}
+
+type QuestRow = {
+  id: string
+  slug: string
+  name: string
+  category: string
+  chapter: string
+  stage: string
+  sort_order: number | null
+  note: string
   status: ContentStatus
   created_at: string
   updated_at: string
@@ -71,6 +97,7 @@ type TextEntryRow = {
   ingame_location: string
   note: string
   body: string
+  quest_id: string | null
   status: ContentStatus
   created_at: string
   updated_at: string
@@ -99,6 +126,16 @@ function escapeLike(value: string): string {
   return value.replace(/[\\%_]/g, (ch) => `\\${ch}`)
 }
 
+function toInt(v: number | null | undefined): number | null {
+  return v == null || Number.isNaN(v) ? null : Math.trunc(v)
+}
+
+/** 任务分类的固定展示顺序（主线 → 个人 → 重要 → 次要 → 日常 → 活动），未知分类排最后 */
+function questCategoryRank(category: string | undefined): number {
+  const idx = QUEST_CATEGORIES.indexOf((category ?? "") as QuestCategory)
+  return idx === -1 ? QUEST_CATEGORIES.length : idx
+}
+
 export class SQLiteStore implements Store {
   private db: Database.Database
 
@@ -110,22 +147,33 @@ export class SQLiteStore implements Store {
     }
     this.db = new Database(path)
     this.db.pragma("journal_mode = WAL")
-    // 对既有库先补齐 v2 新增列，再执行完整 schema（含依赖这些列的索引）。
+    // 对既有库先补齐 v2/v3/v4 新增列，再执行完整 schema（含依赖这些列的索引）。
     // 全新库因 entities 表不存在会跳过 ALTER，直接由 CREATE TABLE 建表。
+    // 版本判定依据：
+    //   - quests 表已存在 → 库已是 v5+，跳过全部 v4 升级路径；
+    //   - 否则 entities 建表 SQL 含 'quest' → v4 库，需执行 v5 任务拆分迁移；
+    //   - 否则为 v3- 旧库，走 v4 补列 + 整表重建，再进入 v5 迁移。
     const existing = this.db
       .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='entities'")
       .get() as { name: string } | undefined
     if (existing) {
+      const questsTableExists = this.db
+        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='quests'")
+        .get()
+      const tableSqlBefore = this.tableSql("entities")
+      // v5- 全新库的 entities SQL 同样不含 'quest'，以 quests 表存在性区分，避免误入 v4 路径
+      const isPreV4 = Boolean(tableSqlBefore) && !tableSqlBefore!.includes("'quest'") && !questsTableExists
+
       const cols = this.db.prepare("PRAGMA table_info(entities)").all() as { name: string }[]
       const colNames = new Set(cols.map((c) => c.name))
       if (!colNames.has("race")) {
-        this.db.exec("ALTER TABLE entities ADD COLUMN race TEXT NOT NULL DEFAULT ''")
+        this.tryAddColumn("entities", "race", "TEXT NOT NULL DEFAULT ''")
       }
       if (!colNames.has("parent_id")) {
-        this.db.exec("ALTER TABLE entities ADD COLUMN parent_id TEXT")
+        this.tryAddColumn("entities", "parent_id", "TEXT")
       }
       // v3：人物生卒字段（年/月/日可空，circa 默认0，place_free 默认空串）
-      const newCols: Record<string, string> = {
+      const legacyCols: Record<string, string> = {
         birth_year: "INTEGER",
         birth_month: "INTEGER",
         birth_day: "INTEGER",
@@ -138,14 +186,271 @@ export class SQLiteStore implements Store {
         birth_place_free: "TEXT NOT NULL DEFAULT ''",
         death_place_id: "TEXT",
         death_place_free: "TEXT NOT NULL DEFAULT ''",
+        life_status: "TEXT NOT NULL DEFAULT ''",
       }
-      for (const [col, def] of Object.entries(newCols)) {
+      for (const [col, def] of Object.entries(legacyCols)) {
         if (!colNames.has(col)) {
-          this.db.exec(`ALTER TABLE entities ADD COLUMN ${col} ${def}`)
+          this.tryAddColumn("entities", col, def)
+        }
+      }
+      if (isPreV4) {
+        // v4：任务字段（仅为把 v3- 旧库补到 v4 形态，供随后的 v5 迁移读取）
+        const questCols: Record<string, string> = {
+          quest_category: "TEXT NOT NULL DEFAULT ''",
+          quest_chapter: "TEXT NOT NULL DEFAULT ''",
+          quest_stage: "TEXT NOT NULL DEFAULT ''",
+          quest_order: "INTEGER",
+        }
+        for (const [col, def] of Object.entries(questCols)) {
+          if (!colNames.has(col)) {
+            this.tryAddColumn("entities", col, def)
+          }
+        }
+        // v4：type 的 CHECK 约束无法用 ALTER 修改，需整表重建以加入 'quest'。
+        this.rebuildEntitiesForQuestType()
+        // v5：任务从实体系统拆分为独立 quests 表（检测依据：entities 建表 SQL 仍含 'quest'）。
+        this.migrateQuestsOutOfEntities()
+      } else {
+        // v4 库直接进入 v5 迁移（检测依据：entities 建表 SQL 仍含 'quest'）
+        const tableSql = this.tableSql("entities")
+        if (tableSql && tableSql.includes("'quest'")) {
+          this.migrateQuestsOutOfEntities()
+        }
+      }
+      // v5：text_entries 补 quest_id 列（既有库 ALTER 补齐；须先于 SQLITE_SCHEMA，
+      // 因为 schema 会创建依赖该列的 idx_text_entries_quest 索引）。
+      const textEntriesExists = this.db
+        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='text_entries'")
+        .get()
+      if (textEntriesExists) {
+        const textCols = this.db.prepare("PRAGMA table_info(text_entries)").all() as { name: string }[]
+        if (!textCols.some((c) => c.name === "quest_id")) {
+          this.tryAddColumn(
+            "text_entries",
+            "quest_id",
+            "TEXT REFERENCES quests(id) ON DELETE SET NULL"
+          )
         }
       }
     }
     this.db.exec(SQLITE_SCHEMA)
+  }
+
+  private tableSql(table: string): string | undefined {
+    const row = this.db
+      .prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name=?")
+      .get(table) as { sql: string } | undefined
+    return row?.sql
+  }
+
+  /** 幂等加列：并发进程可能已加同名列，重复 ALTER 时静默忽略 */
+  private tryAddColumn(table: string, col: string, def: string): void {
+    try {
+      this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${def}`)
+    } catch (err) {
+      if (!(err instanceof Error) || !err.message.includes("duplicate column name")) throw err
+    }
+  }
+
+  /**
+   * v4：整表重建 entities，使 type 的 CHECK 约束接受 'quest'。
+   * 幂等（仅在旧约束存在时调用）；显式列名拷贝以兼容各历史版本的列顺序差异；
+   * 事务内完成，失败整体回滚。索引随旧表删除，由随后的 SQLITE_SCHEMA 重建。
+   */
+  private rebuildEntitiesForQuestType(): void {
+    // foreign_keys 是连接级设置且在事务内为 no-op，必须在事务外切换
+    this.db.pragma("foreign_keys = OFF")
+    const rebuild = this.db.transaction(() => {
+      // 事务内二次校验：并发进程可能已完成 v4 重建
+      const sql = this.tableSql("entities")
+      if (!sql || sql.includes("'quest'")) return
+      this.db.exec(`
+        CREATE TABLE entities_rebuild (
+          id         TEXT PRIMARY KEY,
+          slug       TEXT NOT NULL UNIQUE,
+          type       TEXT NOT NULL CHECK (type IN ('person','place','faction','quest')),
+          name       TEXT NOT NULL,
+          intro      TEXT NOT NULL DEFAULT '',
+          note       TEXT NOT NULL DEFAULT '',
+          race       TEXT NOT NULL DEFAULT '',
+          parent_id  TEXT,
+          birth_year       INTEGER,
+          birth_month      INTEGER,
+          birth_day        INTEGER,
+          birth_circa      INTEGER NOT NULL DEFAULT 0,
+          death_year       INTEGER,
+          death_month      INTEGER,
+          death_day        INTEGER,
+          death_circa      INTEGER NOT NULL DEFAULT 0,
+          birth_place_id   TEXT,
+          birth_place_free TEXT NOT NULL DEFAULT '',
+          death_place_id   TEXT,
+          death_place_free TEXT NOT NULL DEFAULT '',
+          life_status      TEXT NOT NULL DEFAULT '',
+          quest_category   TEXT NOT NULL DEFAULT '',
+          quest_chapter    TEXT NOT NULL DEFAULT '',
+          quest_stage      TEXT NOT NULL DEFAULT '',
+          quest_order      INTEGER,
+          status     TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','published')),
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          deleted    INTEGER NOT NULL DEFAULT 0
+        );
+        INSERT INTO entities_rebuild (
+          id, slug, type, name, intro, note, race, parent_id,
+          birth_year, birth_month, birth_day, birth_circa,
+          death_year, death_month, death_day, death_circa,
+          birth_place_id, birth_place_free, death_place_id, death_place_free,
+          life_status, quest_category, quest_chapter, quest_stage, quest_order,
+          status, created_at, updated_at, deleted
+        )
+        SELECT
+          id, slug, type, name, intro, note, race, parent_id,
+          birth_year, birth_month, birth_day, birth_circa,
+          death_year, death_month, death_day, death_circa,
+          birth_place_id, birth_place_free, death_place_id, death_place_free,
+          life_status, quest_category, quest_chapter, quest_stage, quest_order,
+          status, created_at, updated_at, deleted
+        FROM entities;
+        DROP TABLE entities;
+        ALTER TABLE entities_rebuild RENAME TO entities;
+      `)
+    })
+    try {
+      rebuild.immediate()
+    } finally {
+      this.db.pragma("foreign_keys = ON")
+    }
+  }
+
+  /**
+   * v5：任务拆分迁移——把 entities 中 type='quest' 的行迁入独立 quests 表，
+   * entities 重建为三类型表（CHECK 去 'quest'、删除任务专属列），
+   * quest_characters 重建使 quest_id 外键指向 quests（保留任务原 id，关联行原值平移）。
+   * 任务实体的别名并入任务补充说明留档后删除（任务不再具备别名）。
+   * 幂等（仅在 entities 建表 SQL 含 'quest' 时调用）；事务内完成，失败整体回滚。
+   */
+  private migrateQuestsOutOfEntities(): void {
+    // foreign_keys 是连接级设置且在事务内为 no-op，必须在事务外切换
+    this.db.pragma("foreign_keys = OFF")
+    const migrate = this.db.transaction(() => {
+      // 事务内二次校验：并发进程可能已完成 v5 迁移（next build 多 worker 并发打开同一库）
+      const sql = this.tableSql("entities")
+      if (!sql || !sql.includes("'quest'")) return
+      this.db.exec(`
+        CREATE TABLE quests_migrate (
+          id         TEXT PRIMARY KEY,
+          slug       TEXT NOT NULL UNIQUE,
+          name       TEXT NOT NULL,
+          category   TEXT NOT NULL DEFAULT 'main' CHECK (category IN ('main','personal','major','minor','daily','event')),
+          chapter    TEXT NOT NULL DEFAULT '',
+          stage      TEXT NOT NULL DEFAULT '',
+          sort_order INTEGER,
+          note       TEXT NOT NULL DEFAULT '',
+          status     TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','published')),
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          deleted    INTEGER NOT NULL DEFAULT 0
+        );
+        INSERT INTO quests_migrate (
+          id, slug, name, category, chapter, stage, sort_order, note, status, created_at, updated_at, deleted
+        )
+        SELECT id, slug, name,
+          CASE WHEN quest_category IN ('main','personal','major','minor','daily','event') THEN quest_category ELSE 'main' END,
+          quest_chapter, quest_stage, quest_order, note, status, created_at, updated_at, deleted
+        FROM entities WHERE type = 'quest';
+      `)
+      // 任务别名并入任务补充说明留档（任务不再是实体，不再支持别名）
+      const questAliases = this.db
+        .prepare(
+          `SELECT a.entity_id AS quest_id, a.alias FROM entity_aliases a
+           JOIN entities e ON e.id = a.entity_id
+           WHERE e.type = 'quest' AND trim(a.alias) <> '' ORDER BY a.entity_id, a.id`
+        )
+        .all() as { quest_id: string; alias: string }[]
+      if (questAliases.length > 0) {
+        const grouped = new Map<string, string[]>()
+        for (const { quest_id, alias } of questAliases) {
+          const list = grouped.get(quest_id) ?? []
+          list.push(alias.trim())
+          grouped.set(quest_id, list)
+        }
+        const getNote = this.db.prepare("SELECT note FROM quests_migrate WHERE id = ?")
+        const merge = this.db.prepare("UPDATE quests_migrate SET note = ? WHERE id = ?")
+        for (const [questId, aliases] of grouped) {
+          const note = (getNote.get(questId) as { note: string } | undefined)?.note ?? ""
+          merge.run(
+            `${note ? `${note}\n` : ""}别名：${aliases.join("、")}（原任务实体别名，拆分迁移时留档）`,
+            questId
+          )
+        }
+        this.db.exec(
+          `DELETE FROM entity_aliases WHERE entity_id IN (SELECT id FROM entities WHERE type = 'quest')`
+        )
+      }
+      this.db.exec(`
+        CREATE TABLE entities_migrate (
+          id         TEXT PRIMARY KEY,
+          slug       TEXT NOT NULL UNIQUE,
+          type       TEXT NOT NULL CHECK (type IN ('person','place','faction')),
+          name       TEXT NOT NULL,
+          intro      TEXT NOT NULL DEFAULT '',
+          note       TEXT NOT NULL DEFAULT '',
+          race       TEXT NOT NULL DEFAULT '',
+          parent_id  TEXT,
+          birth_year       INTEGER,
+          birth_month      INTEGER,
+          birth_day        INTEGER,
+          birth_circa      INTEGER NOT NULL DEFAULT 0,
+          death_year       INTEGER,
+          death_month      INTEGER,
+          death_day        INTEGER,
+          death_circa      INTEGER NOT NULL DEFAULT 0,
+          birth_place_id   TEXT,
+          birth_place_free TEXT NOT NULL DEFAULT '',
+          death_place_id   TEXT,
+          death_place_free TEXT NOT NULL DEFAULT '',
+          life_status      TEXT NOT NULL DEFAULT '',
+          status     TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','published')),
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          deleted    INTEGER NOT NULL DEFAULT 0
+        );
+        INSERT INTO entities_migrate (
+          id, slug, type, name, intro, note, race, parent_id,
+          birth_year, birth_month, birth_day, birth_circa,
+          death_year, death_month, death_day, death_circa,
+          birth_place_id, birth_place_free, death_place_id, death_place_free,
+          life_status, status, created_at, updated_at, deleted
+        )
+        SELECT
+          id, slug, type, name, intro, note, race, parent_id,
+          birth_year, birth_month, birth_day, birth_circa,
+          death_year, death_month, death_day, death_circa,
+          birth_place_id, birth_place_free, death_place_id, death_place_free,
+          life_status, status, created_at, updated_at, deleted
+        FROM entities WHERE type <> 'quest';
+        DROP TABLE entities;
+        ALTER TABLE entities_migrate RENAME TO entities;
+        ALTER TABLE quests_migrate RENAME TO quests;
+        CREATE TABLE quest_characters_migrate (
+          id        TEXT PRIMARY KEY,
+          quest_id  TEXT NOT NULL REFERENCES quests(id) ON DELETE CASCADE,
+          person_id TEXT NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+          role      TEXT NOT NULL DEFAULT '',
+          ordinal   INTEGER NOT NULL DEFAULT 0
+        );
+        INSERT INTO quest_characters_migrate (id, quest_id, person_id, role, ordinal)
+        SELECT id, quest_id, person_id, role, ordinal FROM quest_characters;
+        DROP TABLE quest_characters;
+        ALTER TABLE quest_characters_migrate RENAME TO quest_characters;
+      `)
+    })
+    try {
+      migrate.immediate()
+    } finally {
+      this.db.pragma("foreign_keys = ON")
+    }
   }
 
   async init(): Promise<void> {
@@ -184,8 +489,25 @@ export class SQLiteStore implements Store {
       birthPlaceFree: row.birth_place_free ?? "",
       deathPlaceId: row.death_place_id ?? null,
       deathPlaceFree: row.death_place_free ?? "",
+      lifeStatus: row.life_status ?? "",
       status: row.status,
       aliases,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    }
+  }
+
+  private rowToQuest(row: QuestRow): Quest {
+    return {
+      id: row.id,
+      slug: row.slug,
+      name: row.name,
+      category: row.category as Quest["category"],
+      chapter: row.chapter,
+      stage: row.stage,
+      sortOrder: row.sort_order ?? null,
+      note: row.note,
+      status: row.status,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     }
@@ -201,6 +523,7 @@ export class SQLiteStore implements Store {
       ingameLocation: row.ingame_location,
       note: row.note,
       body: row.body,
+      questId: row.quest_id ?? null,
       status: row.status,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
@@ -246,7 +569,7 @@ export class SQLiteStore implements Store {
 
   private uniqueSlug(
     base: string,
-    table: "entities" | "text_entries",
+    table: "entities" | "text_entries" | "quests",
     excludeId: string | null
   ): string {
     const slug = slugify(base)
@@ -255,7 +578,7 @@ export class SQLiteStore implements Store {
     while (true) {
       const row = this.db
         .prepare(
-          `SELECT 1 AS x FROM ${table} WHERE slug = ? AND deleted = 0 AND (? IS NULL OR id <> ?)`
+          `SELECT 1 AS x FROM ${table} WHERE slug = ? AND (? IS NULL OR id <> ?)`
         )
         .get(candidate, excludeId, excludeId ?? "") as { x: number } | undefined
       if (!row) break
@@ -314,10 +637,12 @@ export class SQLiteStore implements Store {
     }
     const sql = `SELECT * FROM entities${
       where.length ? ` WHERE ${where.join(" AND ")}` : ""
-    } ORDER BY type, name COLLATE NOCASE`
+    } ORDER BY type`
     const rows = this.db.prepare(sql).all(...params) as EntityRow[]
     const aliasMap = this.aliasesFor(rows.map((r) => r.id))
-    return rows.map((r) => this.rowToEntity(r, aliasMap.get(r.id) ?? []))
+    return rows
+      .map((r) => this.rowToEntity(r, aliasMap.get(r.id) ?? []))
+      .sort((a, b) => a.type.localeCompare(b.type) || compareZh(a.name, b.name))
   }
 
   async getEntityById(id: string): Promise<Entity | null> {
@@ -373,14 +698,16 @@ export class SQLiteStore implements Store {
          )) ORDER BY e.name COLLATE NOCASE LIMIT 20`
       )
       .all(like, like) as Pick<EntityRow, "id" | "slug" | "type" | "name" | "status">[]
-    return rows.map((r) => ({
-      kind: "entity" as const,
-      id: r.id,
-      slug: r.slug,
-      label: r.name,
-      type: r.type,
-      status: r.status,
-    }))
+    return rows
+      .map((r) => ({
+        kind: "entity" as const,
+        id: r.id,
+        slug: r.slug,
+        label: r.name,
+        type: r.type,
+        status: r.status,
+      }))
+      .sort((a, b) => compareZh(a.label, b.label))
   }
 
   async createEntity(input: EntityInput): Promise<Entity> {
@@ -396,7 +723,6 @@ export class SQLiteStore implements Store {
     const status = input.status ?? "draft"
     const race = (input.race ?? "").trim()
     const parentId = input.parentId ? input.parentId.trim() || null : null
-    const toInt = (v: number | null | undefined) => (v == null || Number.isNaN(v) ? null : Math.trunc(v))
     const birthYear = toInt(input.birthYear)
     const birthMonth = toInt(input.birthMonth)
     const birthDay = toInt(input.birthDay)
@@ -409,19 +735,23 @@ export class SQLiteStore implements Store {
     const birthPlaceFree = (input.birthPlaceFree ?? "").trim()
     const deathPlaceId = input.deathPlaceId ? input.deathPlaceId.trim() || null : null
     const deathPlaceFree = (input.deathPlaceFree ?? "").trim()
+    const lifeStatus = (input.lifeStatus ?? "").trim()
 
     // 校验父级：同类型、未删除、无环
     if (parentId) {
       await this.validateParent(id, type, parentId)
     }
 
+    this.assertUniqueNameInType(type, name, null)
+
     this.db
       .prepare(
         `INSERT INTO entities (id, slug, type, name, intro, note, race, parent_id,
            birth_year, birth_month, birth_day, birth_circa, death_year, death_month, death_day, death_circa,
            birth_place_id, birth_place_free, death_place_id, death_place_free,
+           life_status,
            status, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         id,
@@ -444,6 +774,7 @@ export class SQLiteStore implements Store {
         birthPlaceFree,
         deathPlaceId,
         deathPlaceFree,
+        lifeStatus,
         status,
         now,
         now
@@ -467,7 +798,6 @@ export class SQLiteStore implements Store {
     const aliases = linesToList((input.aliases ?? []).join("\n"))
     const race = (input.race ?? "").trim()
     const parentId = input.parentId ? input.parentId.trim() || null : null
-    const toInt = (v: number | null | undefined) => (v == null || Number.isNaN(v) ? null : Math.trunc(v))
     const birthYear = toInt(input.birthYear)
     const birthMonth = toInt(input.birthMonth)
     const birthDay = toInt(input.birthDay)
@@ -480,6 +810,7 @@ export class SQLiteStore implements Store {
     const birthPlaceFree = (input.birthPlaceFree ?? "").trim()
     const deathPlaceId = input.deathPlaceId ? input.deathPlaceId.trim() || null : null
     const deathPlaceFree = (input.deathPlaceFree ?? "").trim()
+    const lifeStatus = (input.lifeStatus ?? "").trim()
 
     let finalAliases = aliases
     if (input.keepOldNameAsAlias && newName !== existing.name) {
@@ -491,11 +822,14 @@ export class SQLiteStore implements Store {
       await this.validateParent(id, input.type, parentId)
     }
 
+    this.assertUniqueNameInType(input.type, newName, id)
+
     this.db
       .prepare(
         `UPDATE entities SET slug = ?, type = ?, name = ?, intro = ?, note = ?, race = ?, parent_id = ?,
            birth_year = ?, birth_month = ?, birth_day = ?, birth_circa = ?, death_year = ?, death_month = ?, death_day = ?, death_circa = ?,
            birth_place_id = ?, birth_place_free = ?, death_place_id = ?, death_place_free = ?,
+           life_status = ?,
            status = ?, updated_at = ? WHERE id = ?`
       )
       .run(
@@ -518,6 +852,7 @@ export class SQLiteStore implements Store {
         birthPlaceFree,
         deathPlaceId,
         deathPlaceFree,
+        lifeStatus,
         input.status ?? existing.status,
         now,
         id
@@ -534,9 +869,25 @@ export class SQLiteStore implements Store {
     return (await this.getEntityById(id))!
   }
 
+  /** 同类实体的标准名必须唯一（大小写不敏感，与 findEntityCandidates 匹配口径一致） */
+  private assertUniqueNameInType(type: EntityType, name: string, excludeId: string | null): void {
+    const conflict = this.db
+      .prepare(
+        `SELECT name FROM entities
+         WHERE deleted = 0 AND type = ? AND name = ? COLLATE NOCASE AND id <> ?
+         LIMIT 1`
+      )
+      .get(type, name.trim(), excludeId ?? "") as { name: string } | undefined
+    if (conflict) {
+      throw new Error(
+        `同类实体（${ENTITY_TYPE_LABELS[type]}）中已存在同名标准名「${conflict.name}」。` +
+          "同类实体的标准名必须唯一，请改用别名区分或修改标准名。"
+      )
+    }
+  }
+
   /** 校验父级引用：必须存在、未删除、同类型，且不形成环 */
-  private async validateParent(entityId: string, type: EntityType, parentId: string): Promise<void> {
-    const parent = await this.getEntityById(parentId)
+  private async validateParent(entityId: string, type: EntityType, parentId: string): Promise<void> {    const parent = await this.getEntityById(parentId)
     if (!parent) throw new Error("上级实体不存在或已删除")
     if (parent.type !== type) throw new Error("上级实体类型必须与当前实体一致")
     if (await this.detectHierarchyCycle(entityId, parentId)) {
@@ -578,6 +929,247 @@ export class SQLiteStore implements Store {
     for (const alias of aliases) insert.run(entityId, alias)
   }
 
+  /** 校验并归一任务分类；空值默认为主线 */
+  private normalizeQuestCategory(raw: string | undefined): string {
+    const value = (raw ?? "").trim()
+    if (!value) return "main"
+    if (!(QUEST_CATEGORIES as string[]).includes(value)) {
+      throw new Error(`任务分类不合法：${value}`)
+    }
+    return value
+  }
+
+  /** 任务的标准名必须唯一（大小写不敏感，未删除任务内） */
+  private assertUniqueQuestName(name: string, excludeId: string | null): void {
+    const conflict = this.db
+      .prepare(
+        `SELECT name FROM quests
+         WHERE deleted = 0 AND name = ? COLLATE NOCASE AND id <> ?
+         LIMIT 1`
+      )
+      .get(name.trim(), excludeId ?? "") as { name: string } | undefined
+    if (conflict) {
+      throw new Error(`已存在同名任务「${conflict.name}」。任务的标准名必须唯一。`)
+    }
+  }
+
+  /** 校验任务存在且未删除 */
+  private validateQuestEntity(questId: string): void {
+    const quest = this.db
+      .prepare("SELECT id FROM quests WHERE id = ? AND deleted = 0")
+      .get(questId)
+    if (!quest) throw new Error("任务不存在或已删除")
+  }
+
+  // ---------- 任务：独立数据存在的 CRUD（v5） ----------
+
+  async listQuests(opts: ListQuestsOpts = {}): Promise<Quest[]> {
+    const where: string[] = []
+    const params: unknown[] = []
+    if (opts.deletedOnly) {
+      where.push("deleted = 1")
+    } else if (!opts.includeDeleted) {
+      where.push("deleted = 0")
+    }
+    if (opts.status) {
+      where.push("status = ?")
+      params.push(opts.status)
+    }
+    const sql = `SELECT * FROM quests${where.length ? ` WHERE ${where.join(" AND ")}` : ""}`
+    const rows = this.db.prepare(sql).all(...params) as QuestRow[]
+    return rows
+      .map((r) => this.rowToQuest(r))
+      .sort(
+        (a, b) =>
+          questCategoryRank(a.category) - questCategoryRank(b.category) ||
+          (a.sortOrder ?? Number.MAX_SAFE_INTEGER) - (b.sortOrder ?? Number.MAX_SAFE_INTEGER) ||
+          compareZh(a.chapter, b.chapter) ||
+          compareZh(a.stage, b.stage) ||
+          compareZh(a.name, b.name)
+      )
+  }
+
+  async getQuestById(id: string): Promise<Quest | null> {
+    const row = this.db
+      .prepare("SELECT * FROM quests WHERE id = ? AND deleted = 0")
+      .get(id) as QuestRow | undefined
+    return row ? this.rowToQuest(row) : null
+  }
+
+  async getQuestBySlug(
+    slug: string,
+    opts: { includeDraft?: boolean } = {}
+  ): Promise<Quest | null> {
+    const row = this.db
+      .prepare("SELECT * FROM quests WHERE slug = ? AND deleted = 0")
+      .get(slug) as QuestRow | undefined
+    if (!row) return null
+    if (!opts.includeDraft && row.status !== "published") return null
+    return this.rowToQuest(row)
+  }
+
+  async createQuest(input: QuestInput): Promise<Quest> {
+    const now = nowIso()
+    const id = newId()
+    const name = input.name.trim()
+    if (!name) throw new Error("任务名称不能为空")
+    const slug = this.uniqueSlug(
+      input.slug && input.slug.trim() ? input.slug : input.name,
+      "quests",
+      null
+    )
+    const category = this.normalizeQuestCategory(input.category)
+    const chapter = (input.chapter ?? "").trim()
+    const stage = (input.stage ?? "").trim()
+    const sortOrder = toInt(input.sortOrder)
+    const status = input.status ?? "draft"
+    const persons = input.persons ?? []
+
+    // 校验出场人物：提前于任务插入，避免校验失败后留下脏任务行
+    if (persons.length > 0) {
+      await this.validateQuestPersons(persons)
+    }
+    this.assertUniqueQuestName(name, null)
+
+    this.db
+      .prepare(
+        `INSERT INTO quests (id, slug, name, category, chapter, stage, sort_order, note, status, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(id, slug, name, category, chapter, stage, sortOrder, input.note ?? "", status, now, now)
+    await this.replaceQuestCharacters(id, persons)
+    return (await this.getQuestById(id))!
+  }
+
+  async updateQuest(id: string, input: QuestInput): Promise<Quest> {
+    const existing = await this.getQuestById(id)
+    if (!existing) throw new Error("任务不存在")
+    const now = nowIso()
+    const name = input.name.trim()
+    if (!name) throw new Error("任务名称不能为空")
+    const slug = this.uniqueSlug(
+      input.slug && input.slug.trim() ? input.slug : input.name,
+      "quests",
+      id
+    )
+    const category = this.normalizeQuestCategory(input.category)
+    const chapter = (input.chapter ?? "").trim()
+    const stage = (input.stage ?? "").trim()
+    const sortOrder = toInt(input.sortOrder)
+    const status = input.status ?? existing.status
+    // 未显式传入 persons 时保留现有关联，避免误清空
+    const persons =
+      input.persons ??
+      (await this.getQuestCharacters(id)).map((c) => ({ personId: c.personId, role: c.role }))
+    await this.validateQuestPersons(persons)
+    this.assertUniqueQuestName(name, id)
+
+    this.db
+      .prepare(
+        `UPDATE quests SET slug = ?, name = ?, category = ?, chapter = ?, stage = ?,
+           sort_order = ?, note = ?, status = ?, updated_at = ? WHERE id = ?`
+      )
+      .run(slug, name, category, chapter, stage, sortOrder, input.note ?? "", status, now, id)
+    await this.replaceQuestCharacters(id, persons)
+    return (await this.getQuestById(id))!
+  }
+
+  async deleteQuest(id: string): Promise<void> {
+    this.db.prepare("UPDATE quests SET deleted = 1, updated_at = ? WHERE id = ?").run(nowIso(), id)
+  }
+
+  async restoreQuest(id: string): Promise<void> {
+    const row = this.db
+      .prepare("SELECT name FROM quests WHERE id = ?")
+      .get(id) as { name: string } | undefined
+    if (!row) throw new Error("任务不存在")
+    this.assertUniqueQuestName(row.name, id)
+    this.db.prepare("UPDATE quests SET deleted = 0, updated_at = ? WHERE id = ?").run(nowIso(), id)
+  }
+
+  async getQuestCount(status?: ContentStatus): Promise<number> {
+    const row = this.db
+      .prepare(`SELECT COUNT(*) AS n FROM quests WHERE deleted = 0 ${status ? "AND status = ?" : ""}`)
+      .get(...(status ? [status] : [])) as { n: number }
+    return row.n
+  }
+
+  // ---------- 任务↔人物关联 ----------
+
+  async getQuestCharacters(questId: string): Promise<QuestCharacter[]> {
+    const rows = this.db
+      .prepare(
+        `SELECT qc.id, qc.quest_id, qc.person_id, qc.role, qc.ordinal
+         FROM quest_characters qc
+         JOIN entities p ON p.id = qc.person_id AND p.deleted = 0 AND p.type = 'person'
+         WHERE qc.quest_id = ?
+         ORDER BY qc.ordinal`
+      )
+      .all(questId) as {
+      id: string; quest_id: string; person_id: string; role: string; ordinal: number
+    }[]
+    return rows.map((r) => ({
+      id: r.id,
+      questId: r.quest_id,
+      personId: r.person_id,
+      role: r.role,
+      ordinal: r.ordinal,
+    }))
+  }
+
+  async getQuestsForPerson(personId: string): Promise<QuestPersonRef[]> {
+    const rows = this.db
+      .prepare(
+        `SELECT qc.role, qc.ordinal, q.*
+         FROM quest_characters qc
+         JOIN quests q ON q.id = qc.quest_id AND q.deleted = 0
+         WHERE qc.person_id = ?`
+      )
+      .all(personId) as (QuestRow & { role: string; ordinal: number })[]
+    return rows
+      .map((r) => ({
+        quest: this.rowToQuest(r),
+        role: r.role,
+        ordinal: r.ordinal,
+      }))
+      .sort(
+        (a, b) =>
+          questCategoryRank(a.quest.category) - questCategoryRank(b.quest.category) ||
+          (a.quest.sortOrder ?? Number.MAX_SAFE_INTEGER) - (b.quest.sortOrder ?? Number.MAX_SAFE_INTEGER) ||
+          compareZh(a.quest.chapter, b.quest.chapter) ||
+          compareZh(a.quest.stage, b.quest.stage) ||
+          a.ordinal - b.ordinal ||
+          compareZh(a.quest.name, b.quest.name)
+      )
+  }
+
+  /** 校验任务出场人物引用：必须存在、未删除且为人物类型 */
+  private async validateQuestPersons(persons: QuestPersonInput[]): Promise<void> {
+    for (const p of persons) {
+      const person = this.db
+        .prepare("SELECT type FROM entities WHERE id = ? AND deleted = 0")
+        .get(p.personId) as { type: string } | undefined
+      if (!person || person.type !== "person") {
+        throw new Error(`出场人物无效或不是人物类型实体：${p.personId}`)
+      }
+    }
+  }
+
+  private async replaceQuestCharacters(questId: string, persons: QuestPersonInput[]): Promise<void> {
+    if (persons.length > 0) {
+      this.validateQuestEntity(questId)
+      await this.validateQuestPersons(persons)
+    }
+    this.db.prepare("DELETE FROM quest_characters WHERE quest_id = ?").run(questId)
+    const insert = this.db.prepare(
+      "INSERT INTO quest_characters (id, quest_id, person_id, role, ordinal) VALUES (?, ?, ?, ?, ?)"
+    )
+    for (let i = 0; i < persons.length; i++) {
+      const p = persons[i]
+      insert.run(newId(), questId, p.personId, (p.role ?? "").trim(), i)
+    }
+  }
+
   async deleteEntity(id: string): Promise<void> {
     // v2：删除人物时清理其相关关系
     await this.deleteRelationsForPerson(id)
@@ -585,6 +1177,11 @@ export class SQLiteStore implements Store {
   }
 
   async restoreEntity(id: string): Promise<void> {
+    const row = this.db
+      .prepare("SELECT type, name FROM entities WHERE id = ?")
+      .get(id) as { type: EntityType; name: string } | undefined
+    if (!row) throw new Error("实体不存在")
+    this.assertUniqueNameInType(row.type, row.name, id)
     this.db.prepare("UPDATE entities SET deleted = 0, updated_at = ? WHERE id = ?").run(nowIso(), id)
   }
 
@@ -627,15 +1224,17 @@ export class SQLiteStore implements Store {
          FROM entity_factions ef
          JOIN entities e ON e.id = ef.entity_id AND e.deleted = 0
          WHERE ef.faction_id = ?
-         ORDER BY ef.ordinal, e.name COLLATE NOCASE`
+          ORDER BY ef.ordinal`
       )
       .all(factionId) as (EntityRow & { role: string; ordinal: number })[]
     const aliasMap = this.aliasesFor(rows.map((r) => r.id))
-    return rows.map((r) => ({
-      entity: this.rowToEntity(r, aliasMap.get(r.id) ?? []),
-      role: r.role,
-      ordinal: r.ordinal,
-    }))
+    return rows
+      .map((r) => ({
+        entity: this.rowToEntity(r, aliasMap.get(r.id) ?? []),
+        role: r.role,
+        ordinal: r.ordinal,
+      }))
+      .sort((a, b) => a.ordinal - b.ordinal || compareZh(a.entity.name, b.entity.name))
   }
 
   async getEntityChildren(parentId: string, opts: { status?: ContentStatus } = {}): Promise<Entity[]> {
@@ -645,10 +1244,11 @@ export class SQLiteStore implements Store {
       sql += ` AND status = ?`
       params.push(opts.status)
     }
-    sql += ` ORDER BY name COLLATE NOCASE`
     const rows = this.db.prepare(sql).all(...params) as EntityRow[]
     const aliasMap = this.aliasesFor(rows.map((r) => r.id))
-    return rows.map((r) => this.rowToEntity(r, aliasMap.get(r.id) ?? []))
+    return rows
+      .map((r) => this.rowToEntity(r, aliasMap.get(r.id) ?? []))
+      .sort((a, b) => compareZh(a.name, b.name))
   }
 
   async getEntityAncestors(entityId: string, opts: { publicOnly?: boolean } = {}): Promise<Entity[]> {
@@ -867,23 +1467,25 @@ export class SQLiteStore implements Store {
          FROM text_entity_associations tea
          JOIN text_entries t ON t.id = tea.entry_id AND t.deleted = 0 AND t.status = 'published'
          WHERE tea.target_id = ?
-         ORDER BY tea.ordinal, t.title COLLATE NOCASE`
+          ORDER BY tea.ordinal`
       )
       .all(entityId) as {
       association_id: string; ordinal: number;
       entry_id: string; entry_slug: string; entry_title: string;
       source_category: string; source_name: string; ingame_location: string
     }[]
-    return rows.map((r) => ({
-      associationId: r.association_id,
-      entryId: r.entry_id,
-      entrySlug: r.entry_slug,
-      entryTitle: r.entry_title,
-      sourceCategory: r.source_category,
-      sourceName: r.source_name,
-      ingameLocation: r.ingame_location,
-      ordinal: r.ordinal,
-    }))
+    return rows
+      .map((r) => ({
+        associationId: r.association_id,
+        entryId: r.entry_id,
+        entrySlug: r.entry_slug,
+        entryTitle: r.entry_title,
+        sourceCategory: r.source_category,
+        sourceName: r.source_name,
+        ingameLocation: r.ingame_location,
+        ordinal: r.ordinal,
+      }))
+      .sort((a, b) => a.ordinal - b.ordinal || compareZh(a.entryTitle, b.entryTitle))
   }
 
   async getWholeEntryIdsForEntity(entityId: string): Promise<Set<string>> {
@@ -918,15 +1520,19 @@ export class SQLiteStore implements Store {
       where.push("status = ?")
       params.push(opts.status)
     }
+    if (opts.questId) {
+      where.push("quest_id = ?")
+      params.push(opts.questId)
+    }
     if (opts.search && opts.search.trim()) {
       where.push("title LIKE ? ESCAPE '\\'")
       params.push(`%${escapeLike(opts.search.trim())}%`)
     }
     const sql = `SELECT * FROM text_entries${
       where.length ? ` WHERE ${where.join(" AND ")}` : ""
-    } ORDER BY updated_at DESC`
+    }`
     const rows = this.db.prepare(sql).all(...params) as TextEntryRow[]
-    return rows.map((r) => this.rowToTextEntry(r))
+    return rows.map((r) => this.rowToTextEntry(r)).sort((a, b) => compareZh(a.title, b.title))
   }
 
   async getTextEntryById(id: string): Promise<TextEntry | null> {
@@ -966,10 +1572,10 @@ export class SQLiteStore implements Store {
   async listTextCategories(): Promise<string[]> {
     const rows = this.db
       .prepare(
-        `SELECT DISTINCT source_category AS c FROM text_entries WHERE deleted = 0 AND source_category <> '' ORDER BY c`
+        `SELECT DISTINCT source_category AS c FROM text_entries WHERE deleted = 0 AND source_category <> ''`
       )
       .all() as { c: string }[]
-    return rows.map((r) => r.c)
+    return rows.map((r) => r.c).sort(compareZh)
   }
 
   async saveTextEntry(id: string | null, input: TextEntryInput): Promise<SaveTextResult> {
@@ -979,6 +1585,24 @@ export class SQLiteStore implements Store {
       "text_entries",
       id
     )
+    // questId 语义：undefined = 更新时保持现有值 / 创建时为空；显式空值 = 清除；非空 = 校验后写入
+    let questId: string | null
+    if (input.questId === undefined) {
+      if (id) {
+        const row = this.db
+          .prepare("SELECT quest_id FROM text_entries WHERE id = ?")
+          .get(id) as { quest_id: string | null } | undefined
+        if (!row) throw new Error("文本条目不存在")
+        questId = row.quest_id ?? null
+      } else {
+        questId = null
+      }
+    } else {
+      questId = input.questId && String(input.questId).trim() ? String(input.questId).trim() : null
+      if (questId) {
+        this.validateQuestEntity(questId)
+      }
+    }
 
     const oldManual: { content: string; links: { target_kind: string; target_id: string }[] }[] = []
     if (id) {
@@ -1012,43 +1636,22 @@ export class SQLiteStore implements Store {
         const key = `${i}:${link.raw}`
         if (seen.has(key)) continue
         seen.add(key)
-        if (!link.valid || !link.target) {
-          issues.push({ raw: link.raw, target: "", reason: "invalid", candidates: [] })
-          continue
-        }
-        if (link.kind === "text") {
-          const title = link.target.replace(/^文本:\s*/, "").trim()
-          const cands = await this.findTextCandidates(title)
-          if (cands.length === 0) {
-            issues.push({ raw: link.raw, target: link.target, reason: "not_found", candidates: [] })
-          } else if (cands.length > 1) {
-            issues.push({ raw: link.raw, target: link.target, reason: "ambiguous", candidates: cands })
-          } else {
-            const c = cands[0]
-            resolvedLinks.push({
-              blockIndex: i,
-              raw: link.raw,
-              targetKind: "text",
-              targetId: c.id,
-              displayText: linkDisplayFallback(link.display, link.target),
-            })
-          }
-        } else {
-          const cands = await this.findEntityCandidates(link.target)
-          if (cands.length === 0) {
-            issues.push({ raw: link.raw, target: link.target, reason: "not_found", candidates: [] })
-          } else if (cands.length > 1) {
-            issues.push({ raw: link.raw, target: link.target, reason: "ambiguous", candidates: cands })
-          } else {
-            const c = cands[0]
-            resolvedLinks.push({
-              blockIndex: i,
-              raw: link.raw,
-              targetKind: "entity",
-              targetId: c.id,
-              displayText: linkDisplayFallback(link.display, link.target),
-            })
-          }
+        const resolved = await resolveWikiLink(this, link)
+        if (resolved.issue) {
+          issues.push({
+            raw: link.raw,
+            target: resolved.issue === "invalid" ? "" : link.target,
+            reason: resolved.issue,
+            candidates: resolved.candidates,
+          })
+        } else if (resolved.candidate) {
+          resolvedLinks.push({
+            blockIndex: i,
+            raw: link.raw,
+            targetKind: resolved.candidate.kind,
+            targetId: resolved.candidate.id,
+            displayText: resolved.displayText,
+          })
         }
       }
     }
@@ -1059,7 +1662,7 @@ export class SQLiteStore implements Store {
       this.db
         .prepare(
           `UPDATE text_entries SET slug = ?, title = ?, source_category = ?, source_name = ?,
-             ingame_location = ?, note = ?, body = ?, status = ?, updated_at = ?
+             ingame_location = ?, note = ?, body = ?, quest_id = ?, status = ?, updated_at = ?
            WHERE id = ?`
         )
         .run(
@@ -1070,6 +1673,7 @@ export class SQLiteStore implements Store {
           input.ingameLocation,
           input.note,
           input.body,
+          questId,
           input.status,
           now,
           id
@@ -1079,8 +1683,8 @@ export class SQLiteStore implements Store {
       this.db
         .prepare(
           `INSERT INTO text_entries (id, slug, title, source_category, source_name,
-             ingame_location, note, body, status, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+             ingame_location, note, body, quest_id, status, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         )
         .run(
           entryId,
@@ -1091,6 +1695,7 @@ export class SQLiteStore implements Store {
           input.ingameLocation,
           input.note,
           input.body,
+          questId,
           input.status,
           now,
           now
@@ -1155,6 +1760,20 @@ export class SQLiteStore implements Store {
     this.db
       .prepare("UPDATE text_entries SET deleted = 0, updated_at = ? WHERE id = ?")
       .run(nowIso(), id)
+  }
+
+  /** 设置文本的所属任务（v5：一对多，一篇文本至多属于一个任务；null 表示清除） */
+  async setTextEntryQuest(entryId: string, questId: string | null): Promise<void> {
+    const normalized = questId && questId.trim() ? questId.trim() : null
+    if (normalized) {
+      this.validateQuestEntity(normalized)
+    }
+    const result = this.db
+      .prepare("UPDATE text_entries SET quest_id = ?, updated_at = ? WHERE id = ? AND deleted = 0")
+      .run(normalized, nowIso(), entryId)
+    if (result.changes === 0) {
+      throw new Error("文本条目不存在或已删除")
+    }
   }
 
   async getEntryBlocks(entryId: string): Promise<BlockWithLinks[]> {
@@ -1235,11 +1854,14 @@ export class SQLiteStore implements Store {
         displayText: r.display_text,
       })
     }
-    return out
+    return out.sort(
+      (a, b) => compareZh(a.entryTitle, b.entryTitle) || a.blockOrdinal - b.blockOrdinal
+    )
   }
 
   async exportAll(): Promise<ExportData> {
     const entities = await this.listEntities({ includeDeleted: true })
+    const quests = await this.listQuests({ includeDeleted: true })
     const textEntries = await this.listTextEntries({ includeDeleted: true })
     const allBlocks = this.db
       .prepare("SELECT * FROM text_blocks ORDER BY entry_id, ordinal")
@@ -1278,17 +1900,29 @@ export class SQLiteStore implements Store {
       targetId: r.target_id,
       ordinal: r.ordinal,
     }))
+    const questCharRows = this.db
+      .prepare("SELECT * FROM quest_characters ORDER BY quest_id, ordinal")
+      .all() as { id: string; quest_id: string; person_id: string; role: string; ordinal: number }[]
+    const questCharacters: QuestCharacter[] = questCharRows.map((r) => ({
+      id: r.id,
+      questId: r.quest_id,
+      personId: r.person_id,
+      role: r.role,
+      ordinal: r.ordinal,
+    }))
     return {
-      schemaVersion: 2,
+      schemaVersion: 4,
       exportedAt: nowIso(),
       settings: await this.getSettings(),
       entities,
+      quests,
       textEntries,
       blocks,
       links,
       factions,
       relations,
       textEntityAssociations,
+      questCharacters,
     }
   }
 }

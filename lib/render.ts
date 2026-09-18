@@ -1,4 +1,5 @@
 import { extractWikiLinks, linkDisplayFallback, renderMarkdown } from "./markdown"
+import { resolveWikiLink } from "./links"
 import type { BlockWithLinks } from "./db/store"
 import type { ContentLink, Entity, TextEntry } from "./db/types"
 import type { Store } from "./db/store"
@@ -91,31 +92,20 @@ export async function renderMarkdownContent(
   >()
   for (const link of raws) {
     if (resolved.has(link.raw)) continue
-    if (!link.valid || !link.target) {
-      resolved.set(link.raw, {
-        ok: false,
-        display: linkDisplayFallback(link.display, link.target) || link.raw,
-      })
-      continue
-    }
-    let cands: { status: string; slug: string; label: string; kind: "entity" | "text"; type?: string }[] = []
-    if (link.kind === "text") {
-      const title = link.target.replace(/^文本:\s*/, "").trim()
-      cands = await store.findTextCandidates(title)
-    } else {
-      cands = await store.findEntityCandidates(link.target)
-    }
-    const fallback = linkDisplayFallback(link.display, link.target)
-    if (cands.length === 1) {
-      const c = cands[0]
+    const result = await resolveWikiLink(store, link)
+    if (result.issue === null && result.candidate) {
+      const c = result.candidate
       const href = c.kind === "entity" ? `/entities/${c.type}/${c.slug}` : `/texts/${c.slug}`
       if (opts.publicOnly && c.status !== "published") {
-        resolved.set(link.raw, { ok: false, display: fallback })
+        resolved.set(link.raw, { ok: false, display: result.displayText })
       } else {
-        resolved.set(link.raw, { ok: true, href, display: fallback })
+        resolved.set(link.raw, { ok: true, href, display: result.displayText })
       }
     } else {
-      resolved.set(link.raw, { ok: false, display: fallback })
+      resolved.set(link.raw, {
+        ok: false,
+        display: result.displayText || link.raw,
+      })
     }
   }
   return renderMarkdown(src, (link) => resolved.get(link.raw) ?? { ok: false, display: link.display ?? link.target })

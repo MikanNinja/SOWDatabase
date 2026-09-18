@@ -10,7 +10,10 @@
     "typecheck": "tsc --noEmit",
     "seed": "tsx scripts/seed.ts",
     "verify": "tsx scripts/verify-data.ts",
-    "migrate:v2": "tsx scripts/migrate-v2.ts"
+    "migrate:v2": "tsx scripts/migrate-v2.ts",
+    "migrate:pull": "tsx scripts/pull-supabase.ts",
+    "build:static": "node scripts/build-static.mjs",
+    "export:json": "tsx scripts/export-json.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.3",

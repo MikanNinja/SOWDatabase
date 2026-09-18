@@ -3,15 +3,18 @@ import { notFound } from "next/navigation"
 import { getStore } from "@/lib/db/store"
 import { ENTITY_TYPE_LABELS, ENTITY_TYPES } from "@/lib/db/types"
 import Breadcrumb from "@/components/Breadcrumb"
+import TableFilter from "@/components/TableFilter"
 
-export const dynamic = "force-dynamic"
+export const dynamicParams = false
+
+export function generateStaticParams() {
+  return ENTITY_TYPES.map((type) => ({ type }))
+}
 
 export default async function EntityListPage(props: {
   params: Promise<{ type: string }>
-  searchParams: Promise<{ q?: string }>
 }) {
   const { type } = await props.params
-  const { q } = await props.searchParams
   const store = await getStore()
 
   if (!ENTITY_TYPES.includes(type as (typeof ENTITY_TYPES)[number])) {
@@ -19,11 +22,9 @@ export default async function EntityListPage(props: {
   }
 
   const entityType = type as (typeof ENTITY_TYPES)[number]
-  const search = q?.trim() || undefined
   const entities = await store.listEntities({
     type: entityType,
     status: "published",
-    search,
   })
 
   return (
@@ -35,11 +36,10 @@ export default async function EntityListPage(props: {
       </header>
 
       <div className="toolbar">
-        <form action={`/entities/${entityType}`} method="get" className="search-form" role="search">
+        <form action={`/entities/${entityType}`} method="get" className="search-form" role="search" autoComplete="off">
           <input
             type="search"
             name="q"
-            defaultValue={search ?? ""}
             placeholder={`搜索${ENTITY_TYPE_LABELS[entityType]}名称或别名`}
             aria-label="搜索"
           />
@@ -53,14 +53,24 @@ export default async function EntityListPage(props: {
                 : ENTITY_TYPE_LABELS[currentType]}
             </Link>
           ))}
+          <Link href="/quests">任务</Link>
         </nav>
       </div>
+
+      <TableFilter
+        filters={[{ key: "q", attr: "q", mode: "substring" }]}
+        rows={entities.map((entity) => ({
+          id: entity.id,
+          attrs: { q: `${entity.name} ${entity.aliases.join(" ")}`.toLowerCase() },
+        }))}
+        basePath={`/entities/${entityType}`}
+      />
 
       {entities.length === 0 ? (
         <p className="empty">暂无符合条件的记录。</p>
       ) : (
         <div className="table-wrap">
-          <table className="catalog-table">
+          <table className="catalog-table" data-filter-table="">
             <thead>
               <tr>
                 <th scope="col">标准名称</th>
@@ -69,7 +79,10 @@ export default async function EntityListPage(props: {
             </thead>
             <tbody>
               {entities.map((entity) => (
-                <tr key={entity.id}>
+                <tr
+                  key={entity.id}
+                  data-q={`${entity.name} ${entity.aliases.join(" ")}`.toLowerCase()}
+                >
                   <td>
                     <Link href={`/entities/${entity.type}/${entity.slug}`}>
                       {entity.name}
