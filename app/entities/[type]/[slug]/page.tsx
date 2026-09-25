@@ -1,3 +1,4 @@
+import type { Metadata } from "next"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 import { getStore } from "@/lib/db/store"
@@ -35,6 +36,22 @@ function formatPartialDate(d: {
   if (d.day != null) parts.push(`${d.day}日`)
   if (parts.length === 0) return ""
   return d.circa ? `约 ${parts.join("")}` : parts.join("")
+}
+
+export async function generateMetadata(props: {
+  params: Promise<{ type: string; slug: string }>
+}): Promise<Metadata> {
+  const { type, slug: rawSlug } = await props.params
+  const slug = decodeSlug(rawSlug)
+  if (!(type in ENTITY_TYPE_LABELS)) {
+    notFound()
+  }
+  const store = await getStore()
+  const entity = await store.getEntityBySlug(slug)
+  if (!entity || entity.type !== type) {
+    return {}
+  }
+  return { title: entity.name }
 }
 
 export default async function EntityDetailPage(props: {
@@ -316,43 +333,45 @@ export default async function EntityDetailPage(props: {
         </section>
       )}
 
-      {/* v4：相关任务（仅人物），置于"长篇资料"之后、"相关文本"之前 */}
-      {entity.type === "person" && (
-        <section className="record-section">
-          <h2>
-            相关任务 <span className="index-note">（{relatedQuests.length} 条）</span>
-          </h2>
-          {relatedQuests.length === 0 ? (
-            <p className="empty">暂无相关任务。</p>
-          ) : (
-            <div className="table-wrap">
-              <table className="catalog-table">
-                <thead>
-                  <tr>
-                    <th scope="col">任务</th>
-                    <th scope="col">分类</th>
-                    <th scope="col">篇章</th>
-                    <th scope="col">进程</th>
-                    <th scope="col">角色</th>
+      {/* v4：相关任务（仅人物），置于"长篇资料"之后、"相关文本"之前；无任务时隐藏整个 section。
+          v6：勾选"相关任务默认折叠"的人物（主角团等任务数极多者）默认收起，用原生 details/summary，无需 JS */}
+      {relatedQuests.length > 0 && (
+        <details
+          className="record-section related-quests"
+          open={!entity.collapseRelatedQuests}
+        >
+          <summary>
+            <h2>
+              相关任务 <span className="index-note">（{relatedQuests.length} 条）</span>
+            </h2>
+          </summary>
+          <div className="table-wrap">
+            <table className="catalog-table">
+              <thead>
+                <tr>
+                  <th scope="col">任务</th>
+                  <th scope="col">分类</th>
+                  <th scope="col">篇章</th>
+                  <th scope="col">进程</th>
+                  <th scope="col">角色</th>
+                </tr>
+              </thead>
+              <tbody>
+                {relatedQuests.map(({ quest, role }) => (
+                  <tr key={quest.id}>
+                    <td>
+                      <Link href={`/quests/${quest.slug}`}>{quest.name}</Link>
+                    </td>
+                    <td>{QUEST_CATEGORY_LABELS[quest.category]}</td>
+                    <td>{quest.chapter || "—"}</td>
+                    <td>{quest.stage || "—"}</td>
+                    <td>{role || "—"}</td>
                   </tr>
-                </thead>
-                <tbody>
-                  {relatedQuests.map(({ quest, role }) => (
-                    <tr key={quest.id}>
-                      <td>
-                        <Link href={`/quests/${quest.slug}`}>{quest.name}</Link>
-                      </td>
-                      <td>{QUEST_CATEGORY_LABELS[quest.category]}</td>
-                      <td>{quest.chapter || "—"}</td>
-                      <td>{quest.stage || "—"}</td>
-                      <td>{role || "—"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </details>
       )}
 
       <section className="record-section">

@@ -32,6 +32,7 @@ import type {
   ListTextsOpts,
   QuestInput,
   QuestPersonInput,
+  QuestPositionInput,
   RelationInput,
   RelationWithEntity,
   Store,
@@ -67,6 +68,7 @@ type EntityRow = {
   death_place_id: string | null
   death_place_free: string
   life_status: string
+  collapse_related_quests: number
   status: ContentStatus
   created_at: string
   updated_at: string
@@ -216,6 +218,12 @@ export class SQLiteStore implements Store {
         if (tableSql && tableSql.includes("'quest'")) {
           this.migrateQuestsOutOfEntities()
         }
+      }
+      // v6：人物"相关任务默认折叠"标记。必须置于 v4/v5 迁移之后：两条迁移路径
+      // 都会整表重建 entities，此前补的列会被丢弃，故迁移完成后再补列。
+      const colsAfter = this.db.prepare("PRAGMA table_info(entities)").all() as { name: string }[]
+      if (!colsAfter.some((c) => c.name === "collapse_related_quests")) {
+        this.tryAddColumn("entities", "collapse_related_quests", "INTEGER NOT NULL DEFAULT 0")
       }
       // v5：text_entries 补 quest_id 列（既有库 ALTER 补齐；须先于 SQLITE_SCHEMA，
       // 因为 schema 会创建依赖该列的 idx_text_entries_quest 索引）。
@@ -490,6 +498,7 @@ export class SQLiteStore implements Store {
       deathPlaceId: row.death_place_id ?? null,
       deathPlaceFree: row.death_place_free ?? "",
       lifeStatus: row.life_status ?? "",
+      collapseRelatedQuests: row.collapse_related_quests ? true : false,
       status: row.status,
       aliases,
       createdAt: row.created_at,
@@ -736,6 +745,7 @@ export class SQLiteStore implements Store {
     const deathPlaceId = input.deathPlaceId ? input.deathPlaceId.trim() || null : null
     const deathPlaceFree = (input.deathPlaceFree ?? "").trim()
     const lifeStatus = (input.lifeStatus ?? "").trim()
+    const collapseRelatedQuests = input.collapseRelatedQuests ? 1 : 0
 
     // 校验父级：同类型、未删除、无环
     if (parentId) {
@@ -749,9 +759,9 @@ export class SQLiteStore implements Store {
         `INSERT INTO entities (id, slug, type, name, intro, note, race, parent_id,
            birth_year, birth_month, birth_day, birth_circa, death_year, death_month, death_day, death_circa,
            birth_place_id, birth_place_free, death_place_id, death_place_free,
-           life_status,
+           life_status, collapse_related_quests,
            status, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         id,
@@ -775,6 +785,7 @@ export class SQLiteStore implements Store {
         deathPlaceId,
         deathPlaceFree,
         lifeStatus,
+        collapseRelatedQuests,
         status,
         now,
         now
@@ -811,6 +822,7 @@ export class SQLiteStore implements Store {
     const deathPlaceId = input.deathPlaceId ? input.deathPlaceId.trim() || null : null
     const deathPlaceFree = (input.deathPlaceFree ?? "").trim()
     const lifeStatus = (input.lifeStatus ?? "").trim()
+    const collapseRelatedQuests = input.collapseRelatedQuests ? 1 : 0
 
     let finalAliases = aliases
     if (input.keepOldNameAsAlias && newName !== existing.name) {
@@ -829,7 +841,7 @@ export class SQLiteStore implements Store {
         `UPDATE entities SET slug = ?, type = ?, name = ?, intro = ?, note = ?, race = ?, parent_id = ?,
            birth_year = ?, birth_month = ?, birth_day = ?, birth_circa = ?, death_year = ?, death_month = ?, death_day = ?, death_circa = ?,
            birth_place_id = ?, birth_place_free = ?, death_place_id = ?, death_place_free = ?,
-           life_status = ?,
+           life_status = ?, collapse_related_quests = ?,
            status = ?, updated_at = ? WHERE id = ?`
       )
       .run(
@@ -853,6 +865,7 @@ export class SQLiteStore implements Store {
         deathPlaceId,
         deathPlaceFree,
         lifeStatus,
+        collapseRelatedQuests,
         input.status ?? existing.status,
         now,
         id
@@ -1021,7 +1034,6 @@ export class SQLiteStore implements Store {
     const category = this.normalizeQuestCategory(input.category)
     const chapter = (input.chapter ?? "").trim()
     const stage = (input.stage ?? "").trim()
-    const sortOrder = toInt(input.sortOrder)
     const status = input.status ?? "draft"
     const persons = input.persons ?? []
 
@@ -1030,6 +1042,16 @@ export class SQLiteStore implements Store {
       await this.validateQuestPersons(persons)
     }
     this.assertUniqueQuestName(name, null)
+
+    // 位置式编号：position 优先（keep 在创建时等价于 end）；未传时兼容直填数字
+    let sortOrder: number | null
+    if (input.position) {
+      const pos: QuestPositionInput =
+        input.position.mode === "keep" ? { mode: "end" } : input.position
+      sortOrder = this.db.transaction(() => this.resolveQuestPosition(category, null, pos))()
+    } else {
+      sortOrder = toInt(input.sortOrder)
+    }
 
     this.db
       .prepare(
@@ -1055,7 +1077,6 @@ export class SQLiteStore implements Store {
     const category = this.normalizeQuestCategory(input.category)
     const chapter = (input.chapter ?? "").trim()
     const stage = (input.stage ?? "").trim()
-    const sortOrder = toInt(input.sortOrder)
     const status = input.status ?? existing.status
     // 未显式传入 persons 时保留现有关联，避免误清空
     const persons =
@@ -1063,6 +1084,21 @@ export class SQLiteStore implements Store {
       (await this.getQuestCharacters(id)).map((c) => ({ personId: c.personId, role: c.role }))
     await this.validateQuestPersons(persons)
     this.assertUniqueQuestName(name, id)
+
+    // 位置式编号（position 优先）：keep/未指定 → 保持现有值；end/after/manual → 腾位后写入
+    let sortOrder: number | null
+    if (input.position && input.position.mode !== "keep") {
+      const pos: QuestPositionInput = input.position
+      const resolved = this.db.transaction(() => this.resolveQuestPosition(category, id, pos))()
+      sortOrder = resolved ?? existing.sortOrder
+    } else if (input.position) {
+      sortOrder = existing.sortOrder
+    } else if (input.sortOrder === undefined) {
+      // 兼容直填路径：未显式指定时保持现有编号
+      sortOrder = existing.sortOrder
+    } else {
+      sortOrder = toInt(input.sortOrder)
+    }
 
     this.db
       .prepare(
@@ -1085,6 +1121,86 @@ export class SQLiteStore implements Store {
     if (!row) throw new Error("任务不存在")
     this.assertUniqueQuestName(row.name, id)
     this.db.prepare("UPDATE quests SET deleted = 0, updated_at = ? WHERE id = ?").run(nowIso(), id)
+  }
+
+  /**
+   * 位置式编号解析（v5.1）：解析位置意图并腾位，返回应写入的编号。
+   * 仅处理 end/after/manual（keep 由调用方短路）；调用方负责包事务保证腾位与写入原子。
+   * - 腾位只作用于同分类、未删除、排除自身的任务；无编号（空值）任务永不被动。
+   * - "自身已在目标位"时跳过腾位（编辑未变更位置时不引发无谓重排）。
+   * - after 锚点必须存在、未删除且同分类；锚点无编号时回退为 end。
+   */
+  private resolveQuestPosition(
+    category: string,
+    selfId: string | null,
+    position: QuestPositionInput
+  ): number | null {
+    if (position.mode === "keep") {
+      throw new Error("位置意图 keep 应由调用方短路处理")
+    }
+    const selfClause = selfId ? " AND id <> ?" : ""
+    const bumpParams: unknown[] = selfId ? [category, selfId] : [category]
+
+    if (position.mode === "end") {
+      return this.maxQuestOrder(category, selfId)
+    }
+
+    if (position.mode === "after") {
+      const anchor = this.db
+        .prepare("SELECT sort_order, category FROM quests WHERE id = ? AND deleted = 0")
+        .get(position.afterQuestId) as { sort_order: number | null; category: string } | undefined
+      if (!anchor) throw new Error("所选参照任务不存在或已删除")
+      if (selfId && position.afterQuestId === selfId) throw new Error("参照任务不能是任务自身")
+      if (anchor.category !== category) throw new Error("所选参照任务必须与任务属于同一分类")
+      // 锚点无编号（位于末尾拼音区）时无明确"之后"位置，回退为末尾
+      if (anchor.sort_order == null) return this.maxQuestOrder(category, selfId)
+      const target = anchor.sort_order + 1
+      if (selfId) {
+        const self = this.db
+          .prepare("SELECT sort_order FROM quests WHERE id = ?")
+          .get(selfId) as { sort_order: number | null } | undefined
+        // 已紧邻锚点之后：视为未变更，跳过腾位
+        if (self && self.sort_order === target) return target
+      }
+      this.db
+        .prepare(
+          `UPDATE quests SET sort_order = sort_order + 1
+           WHERE deleted = 0 AND category = ?${selfClause} AND sort_order > ?`
+        )
+        .run(...bumpParams, anchor.sort_order)
+      return target
+    }
+
+    // manual
+    const target = toInt(position.order)
+    if (target == null) throw new Error("手动编号不能为空")
+    if (selfId) {
+      const self = this.db
+        .prepare("SELECT sort_order FROM quests WHERE id = ?")
+        .get(selfId) as { sort_order: number | null } | undefined
+      // 与自身当前编号相同：未变更，跳过腾位
+      if (self && self.sort_order === target) return target
+    }
+    this.db
+      .prepare(
+        `UPDATE quests SET sort_order = sort_order + 1
+         WHERE deleted = 0 AND category = ?${selfClause} AND sort_order >= ?`
+      )
+      .run(...bumpParams, target)
+    return target
+  }
+
+  /** 同分类（除自身）中当前最大编号 +1；全部无编号时返回 1 */
+  private maxQuestOrder(category: string, selfId: string | null): number {
+    const selfClause = selfId ? " AND id <> ?" : ""
+    const params: unknown[] = selfId ? [category, selfId] : [category]
+    const row = this.db
+      .prepare(
+        `SELECT COALESCE(MAX(sort_order), 0) AS m FROM quests
+         WHERE deleted = 0 AND category = ?${selfClause}`
+      )
+      .get(...params) as { m: number }
+    return row.m + 1
   }
 
   async getQuestCount(status?: ContentStatus): Promise<number> {
@@ -1223,8 +1339,7 @@ export class SQLiteStore implements Store {
         `SELECT e.*, ef.role, ef.ordinal
          FROM entity_factions ef
          JOIN entities e ON e.id = ef.entity_id AND e.deleted = 0
-         WHERE ef.faction_id = ?
-          ORDER BY ef.ordinal`
+         WHERE ef.faction_id = ?`
       )
       .all(factionId) as (EntityRow & { role: string; ordinal: number })[]
     const aliasMap = this.aliasesFor(rows.map((r) => r.id))
@@ -1234,7 +1349,7 @@ export class SQLiteStore implements Store {
         role: r.role,
         ordinal: r.ordinal,
       }))
-      .sort((a, b) => a.ordinal - b.ordinal || compareZh(a.entity.name, b.entity.name))
+      .sort((a, b) => compareZh(a.entity.name, b.entity.name))
   }
 
   async getEntityChildren(parentId: string, opts: { status?: ContentStatus } = {}): Promise<Entity[]> {

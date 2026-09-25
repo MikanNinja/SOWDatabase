@@ -1,8 +1,13 @@
+import type { Metadata } from "next"
 import Link from "next/link"
 import { getStore } from "@/lib/db/store"
 import { compareZh } from "@/lib/collate"
 import Breadcrumb from "@/components/Breadcrumb"
 import TableFilter from "@/components/TableFilter"
+
+export const metadata: Metadata = {
+  title: "文本列表",
+}
 
 export default async function TextListPage() {
   const store = await getStore()

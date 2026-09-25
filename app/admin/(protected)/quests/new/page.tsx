@@ -10,6 +10,7 @@ export default async function NewQuestPage() {
     name: p.name,
     aliases: p.aliases,
   }))
+  const quests = await store.listQuests({})
 
   return (
     <div>
@@ -17,7 +18,7 @@ export default async function NewQuestPage() {
         <p className="page-kicker">管理后台 / 任务</p>
         <h1>新增任务</h1>
       </header>
-      <QuestForm availablePersons={persons} />
+      <QuestForm availablePersons={persons} availableQuests={quests} />
     </div>
   )
 }

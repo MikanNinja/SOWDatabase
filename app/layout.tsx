@@ -5,8 +5,8 @@ import { getStore } from "@/lib/db/store"
 
 export const metadata: Metadata = {
   title: {
-    default: "游戏资料库",
-    template: "%s · 游戏资料库",
+    default: "S.O.W.资料库",
+    template: "%s - S.O.W.资料库",
   },
   description: "单款游戏的中文人物、地点、势力资料库",
 }

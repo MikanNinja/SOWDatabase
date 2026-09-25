@@ -17,6 +17,9 @@
 /.next/
 /out/
 
+# cloudflare pages upload bundle
+out.zip
+
 # static build stash (app/admin + proxy.ts during next build)
 /.static-build/
 

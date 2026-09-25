@@ -1,9 +1,14 @@
+import type { Metadata } from "next"
 import Link from "next/link"
 import { getStore } from "@/lib/db/store"
 import { QUEST_CATEGORIES, QUEST_CATEGORY_LABELS } from "@/lib/db/types"
 import Breadcrumb from "@/components/Breadcrumb"
 
 export const dynamicParams = false
+
+export const metadata: Metadata = {
+  title: "任务列表",
+}
 
 export default async function QuestListPage() {
   const store = await getStore()

@@ -61,6 +61,19 @@ export interface QuestPersonInput {
   role?: string
 }
 
+/**
+ * 任务位置意图（编号由系统分配，调用方只表达相对位置）：
+ * - keep：保持现有编号（仅编辑有意义，createQuest 中等价于 end）
+ * - end：排到分类末尾 = 同分类（除自身）max+1
+ * - after：排在某同分类任务之后 = 锚点编号+1，同分类（除自身）编号更大者整体 +1 腾位
+ * - manual：高级用法，直接指定编号 = 同分类（除自身）编号 ≥ 该值者整体 +1
+ */
+export type QuestPositionInput =
+  | { mode: "keep" }
+  | { mode: "end" }
+  | { mode: "after"; afterQuestId: string }
+  | { mode: "manual"; order: number }
+
 /** 任务写入项（v5：任务为独立数据存在） */
 export interface QuestInput {
   slug?: string
@@ -71,8 +84,13 @@ export interface QuestInput {
   chapter?: string
   /** 进程（自由文字） */
   stage?: string
-  /** 同分类内展示排序（可空） */
+  /**
+   * 同分类内展示排序（可空；兼容直填路径——未传 position 时按原语义写入：
+   * 创建时 undefined/null 表示无编号垫底，更新时 undefined 表示保持现有值）
+   */
   sortOrder?: number | null
+  /** 位置意图（优先于 sortOrder；后台表单使用，编号腾位由系统完成） */
+  position?: QuestPositionInput
   /** 补充说明（支持受限 Markdown） */
   note?: string
   status?: ContentStatus
@@ -137,6 +155,8 @@ export interface EntityInput {
   deathPlaceFree?: string
   /** 人物专属：现状（生死状况，自由文本，可留空） */
   lifeStatus?: string
+  /** 人物详情页"相关任务"是否默认折叠（用于主角团等任务数量极多的人物） */
+  collapseRelatedQuests?: boolean
   /** 人物专属：所属势力列表 */
   factions?: FactionInput[]
   status?: ContentStatus

@@ -3,7 +3,7 @@
 import { useState } from "react"
 import Link from "next/link"
 import { QUEST_CATEGORIES, QUEST_CATEGORY_LABELS } from "@/lib/db/types"
-import type { Quest, QuestCharacter } from "@/lib/db/types"
+import type { Quest, QuestCategory, QuestCharacter } from "@/lib/db/types"
 import { saveQuestAction } from "@/app/admin/actions"
 import SubmitButton from "@/components/admin/SubmitButton"
 
@@ -21,17 +21,36 @@ interface PersonRow {
 export default function QuestForm({
   quest,
   availablePersons,
+  availableQuests = [],
   currentPersons = [],
 }: {
   quest?: Quest | null
   availablePersons: PersonOption[]
+  /** 可选参照任务（用于"排在某任务之后"位置选择，全部任务按展示序传入，表单内按分类过滤） */
+  availableQuests?: Quest[]
   currentPersons?: QuestCharacter[]
 }) {
   const editing = Boolean(quest)
-
+  const [category, setCategory] = useState<QuestCategory>(quest?.category ?? "main")
+  const [positionValue, setPositionValue] = useState<string>(editing ? "keep" : "end")
   const [persons, setPersons] = useState<PersonRow[]>(
     (currentPersons ?? []).map((p) => ({ personId: p.personId, role: p.role }))
   )
+
+  // 同分类参照任务（编辑时排除自身），按展示序传入
+  const anchorQuests = availableQuests.filter(
+    (q) => q.category === category && q.id !== quest?.id
+  )
+
+  function changeCategory(value: string) {
+    setCategory(value as QuestCategory)
+    // 分类切换后，若已选参照任务不在新分类中则回退为"末尾"
+    setPositionValue((prev) => {
+      if (!prev.startsWith("after:")) return prev
+      const afterId = prev.slice(6)
+      return availableQuests.some((q) => q.id === afterId && q.category === value) ? prev : "end"
+    })
+  }
 
   function addPerson() {
     setPersons((prev) => [...prev, { personId: "", role: "" }])
@@ -66,7 +85,12 @@ export default function QuestForm({
         </div>
         <div className="form-field">
           <label htmlFor="category">任务分类 *</label>
-          <select id="category" name="category" defaultValue={quest?.category ?? "main"}>
+          <select
+            id="category"
+            name="category"
+            value={category}
+            onChange={(e) => changeCategory(e.target.value)}
+          >
             {QUEST_CATEGORIES.map((c) => (
               <option key={c} value={c}>
                 {QUEST_CATEGORY_LABELS[c]}
@@ -120,15 +144,45 @@ export default function QuestForm({
       </div>
 
       <div className="form-field">
-        <label htmlFor="sortOrder">展示排序</label>
-        <input
-          type="number"
-          id="sortOrder"
-          name="sortOrder"
-          defaultValue={quest?.sortOrder ?? ""}
-          aria-label="展示排序"
-        />
-        <span className="hint">可空；同分类内从小到大展示。</span>
+        <label htmlFor="positionMode">位置</label>
+        <select
+          id="positionMode"
+          name="positionMode"
+          value={positionValue}
+          onChange={(e) => setPositionValue(e.target.value)}
+        >
+          {editing && (
+            <option value="keep">
+              保持现有位置{quest!.sortOrder != null ? `（编号 ${quest!.sortOrder}）` : "（无编号）"}
+            </option>
+          )}
+          <option value="end">排到分类末尾</option>
+          <optgroup label="排在以下任务之后">
+            {anchorQuests.length === 0 ? (
+              <option value="end" disabled>（该分类暂无其他任务）</option>
+            ) : (
+              anchorQuests.map((q) => (
+                <option key={q.id} value={`after:${q.id}`}>
+                  {q.name}（{q.sortOrder != null ? `编号 ${q.sortOrder}` : "无编号"}）
+                </option>
+              ))
+            )}
+          </optgroup>
+          <option value="manual">手动指定编号（高级）</option>
+        </select>
+        <span className="hint">
+          编号由系统分配：选「某任务之后」会把该分类中排在后面的任务整体后移一位，无需关心具体数字；
+          无编号的参照任务视同「排到末尾」。
+        </span>
+        {positionValue === "manual" && (
+          <input
+            type="number"
+            id="positionOrder"
+            name="positionOrder"
+            aria-label="手动编号"
+            defaultValue={quest?.sortOrder ?? ""}
+          />
+        )}
       </div>
 
       <input type="hidden" name="persons" value={personsJson} />

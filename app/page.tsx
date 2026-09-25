@@ -1,4 +1,11 @@
+import type { Metadata } from "next"
 import { getStore } from "@/lib/db/store"
+
+export const metadata: Metadata = {
+  title: {
+    absolute: "首页 - S.O.W.资料库",
+  },
+}
 
 export default async function HomePage() {
   const store = await getStore()

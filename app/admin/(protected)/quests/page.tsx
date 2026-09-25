@@ -47,6 +47,7 @@ export default async function AdminQuestsPage(props: {
             <tr>
               <th scope="col">名称</th>
               <th scope="col">分类</th>
+              <th scope="col">排序</th>
               <th scope="col">篇章</th>
               <th scope="col">进程</th>
               <th scope="col">状态</th>
@@ -61,6 +62,7 @@ export default async function AdminQuestsPage(props: {
                   <Link href={`/admin/quests/${quest.id}/edit`}>{quest.name}</Link>
                 </td>
                 <td>{QUEST_CATEGORY_LABELS[quest.category as QuestCategory]}</td>
+                <td>{quest.sortOrder ?? "—"}</td>
                 <td>{quest.chapter || "—"}</td>
                 <td>{quest.stage || "—"}</td>
                 <td><span className={`badge ${quest.status}`}>{quest.status === "published" ? "已发布" : "草稿"}</span></td>
@@ -82,7 +84,7 @@ export default async function AdminQuestsPage(props: {
             ))}
             {quests.length === 0 && (
               <tr>
-                <td colSpan={7} className="empty">暂无记录。</td>
+                <td colSpan={8} className="empty">暂无记录。</td>
               </tr>
             )}
           </tbody>

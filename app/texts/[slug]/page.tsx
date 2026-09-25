@@ -1,3 +1,4 @@
+import type { Metadata } from "next"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 import { getStore } from "@/lib/db/store"
@@ -19,6 +20,18 @@ function decodeSlug(value: string): string {
   } catch {
     return value
   }
+}
+
+export async function generateMetadata(props: {
+  params: Promise<{ slug: string }>
+}): Promise<Metadata> {
+  const slug = decodeSlug((await props.params).slug)
+  const store = await getStore()
+  const entry = await store.getTextEntryBySlug(slug)
+  if (!entry) {
+    return {}
+  }
+  return { title: entry.title }
 }
 
 export default async function TextDetailPage(props: {

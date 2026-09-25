@@ -284,6 +284,33 @@ h3 {
   margin-top: 0.45rem;
 }
 
+/* 相关任务折叠区：原生 details/summary，summary 承载标题 */
+.record-section.related-quests > summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.record-section.related-quests > summary::-webkit-details-marker {
+  display: none;
+}
+
+.record-section.related-quests > summary h2 {
+  display: inline-block;
+  margin-bottom: 0;
+}
+
+.record-section.related-quests > summary::after {
+  color: var(--muted);
+  content: "▸";
+  display: inline-block;
+  margin-left: 0.4rem;
+  transition: transform 0.15s ease;
+}
+
+.record-section.related-quests[open] > summary::after {
+  transform: rotate(90deg);
+}
+
 /* Home and indexes */
 
 .home-hero {

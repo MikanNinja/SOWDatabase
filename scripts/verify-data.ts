@@ -419,6 +419,78 @@ async function main() {
   console.log("任务总数（应为 4）:", finalQuestCount.length)
   if (finalQuestCount.length !== 4) throw new Error("任务数量验证失败")
 
+  // ========== v5.1 验证：位置式编号（系统分配 + 腾位） ==========
+
+  console.log("\n--- v5.1 位置式编号验证 ---")
+
+  // 末尾：main 当前最大编号为 2（雾中的火种）→ 新任务应为 3
+  const tailQuest = await store.createQuest({
+    name: "演练-末尾",
+    category: "main",
+    position: { mode: "end" },
+    status: "draft",
+  })
+  console.log("末尾编号分配（应为 3）:", tailQuest.sortOrder)
+  if (tailQuest.sortOrder !== 3) throw new Error("末尾编号分配验证失败")
+
+  // 在雾中的火种（编号 2）之后插入 → 新任务 = 3，原 3（演练-末尾）+1 → 4
+  const insertedQuest = await store.createQuest({
+    name: "演练-插入",
+    category: "main",
+    position: { mode: "after", afterQuestId: huozhongQuest.id },
+    status: "draft",
+  })
+  console.log("插入编号（应为 3）:", insertedQuest.sortOrder)
+  if (insertedQuest.sortOrder !== 3) throw new Error("插入位置编号验证失败")
+  const tailAfterInsert = await store.getQuestById(tailQuest.id)
+  console.log("插入后原末尾任务编号 +1（应为 4）:", tailAfterInsert?.sortOrder)
+  if (tailAfterInsert?.sortOrder !== 4) throw new Error("插入腾位验证失败")
+
+  // keep：编辑不变更位置
+  const keptQuest = await store.updateQuest(insertedQuest.id, {
+    name: "演练-插入",
+    category: "main",
+    position: { mode: "keep" },
+  })
+  console.log("保持位置（应为 3）:", keptQuest.sortOrder)
+  if (keptQuest.sortOrder !== 3) throw new Error("保持位置验证失败")
+
+  // manual：手动插入编号 1 → main 分类中原 ≥1 的任务整体 +1（雾中的火种 2→3）
+  const manualQuest = await store.createQuest({
+    name: "演练-手动",
+    category: "main",
+    position: { mode: "manual", order: 1 },
+    status: "draft",
+  })
+  console.log("手动插入编号（应为 1）:", manualQuest.sortOrder)
+  if (manualQuest.sortOrder !== 1) throw new Error("手动编号验证失败")
+  const huozhongAfterManual = await store.getQuestById(huozhongQuest.id)
+  console.log("手动插入后雾中的火种（应为 3）:", huozhongAfterManual?.sortOrder)
+  if (huozhongAfterManual?.sortOrder !== 3) throw new Error("手动插入腾位验证失败")
+
+  // 非法位置：参照任务跨分类应被拒绝
+  let crossThrew = false
+  try {
+    await store.createQuest({
+      name: "演练-跨分类",
+      category: "daily",
+      position: { mode: "after", afterQuestId: huozhongQuest.id },
+      status: "draft",
+    })
+  } catch {
+    crossThrew = true
+  }
+  console.log("跨分类参照任务被拒绝（应为 true）:", crossThrew)
+  if (!crossThrew) throw new Error("参照任务分类校验失败")
+
+  // 清理演练任务（软删），恢复 fixture 形态
+  await store.deleteQuest(tailQuest.id)
+  await store.deleteQuest(insertedQuest.id)
+  await store.deleteQuest(manualQuest.id)
+  const afterCleanupCount = await store.listQuests({})
+  console.log("清理后任务总数（应为 4）:", afterCleanupCount.length)
+  if (afterCleanupCount.length !== 4) throw new Error("位置演练清理验证失败")
+
   console.log("\n验证完成（含 v2/v5 扩展）。")
 }
 

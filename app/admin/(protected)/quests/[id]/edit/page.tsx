@@ -21,6 +21,7 @@ export default async function EditQuestPage(props: {
   }))
   const currentPersons = await store.getQuestCharacters(quest.id)
   const questTexts = await store.listTextEntries({ questId: quest.id })
+  const quests = await store.listQuests({})
 
   return (
     <div>
@@ -35,6 +36,7 @@ export default async function EditQuestPage(props: {
       <QuestForm
         quest={quest}
         availablePersons={persons}
+        availableQuests={quests}
         currentPersons={currentPersons}
       />
 

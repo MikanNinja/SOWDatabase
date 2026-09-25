@@ -5,6 +5,7 @@ import { getStore } from "@/lib/db/store"
 import { getSession, setSessionCookie, clearSessionCookie } from "@/lib/auth"
 import { checkCredentials } from "@/lib/auth-core"
 import type { ContentStatus, EntityType } from "@/lib/db/types"
+import type { QuestPositionInput } from "@/lib/db/store"
 import { linesToList } from "@/lib/utils"
 
 function isAuthed(): Promise<boolean> {
@@ -84,6 +85,8 @@ export async function saveEntityAction(formData: FormData) {
   const deathPlaceId = deathPlaceIdRaw || null
   const deathPlaceFree = String(formData.get("deathPlaceFree") ?? "").trim()
   const lifeStatus = String(formData.get("lifeStatus") ?? "").trim()
+  // 人物详情页"相关任务"默认折叠标记（仅 person 有实际意义；其他类型存 0 不影响）
+  const collapseRelatedQuests = formData.get("collapseRelatedQuests") === "on"
 
   const input = {
     slug: slug || undefined,
@@ -106,6 +109,7 @@ export async function saveEntityAction(formData: FormData) {
     deathPlaceId,
     deathPlaceFree,
     lifeStatus,
+    collapseRelatedQuests,
     factions,
     status,
     aliases,
@@ -293,13 +297,26 @@ export async function saveQuestAction(formData: FormData) {
   const chapter = String(formData.get("chapter") ?? "").trim()
   const stage = String(formData.get("stage") ?? "").trim()
   const note = String(formData.get("note") ?? "")
-  const sortOrderRaw = String(formData.get("sortOrder") ?? "").trim()
-  let sortOrder: number | null = null
-  if (sortOrderRaw) {
-    const n = Number(sortOrderRaw)
+
+  // 位置意图：keep / end / after:<questId> / manual（附 positionOrder）
+  const positionModeRaw = String(formData.get("positionMode") ?? "").trim()
+  let position: QuestPositionInput | undefined
+  if (positionModeRaw === "keep") {
+    position = { mode: "keep" }
+  } else if (positionModeRaw === "end") {
+    position = { mode: "end" }
+  } else if (positionModeRaw.startsWith("after:")) {
+    const afterQuestId = positionModeRaw.slice("after:".length).trim()
+    if (!afterQuestId) throw new Error("位置参照任务不能为空")
+    position = { mode: "after", afterQuestId }
+  } else if (positionModeRaw === "manual") {
+    const raw = String(formData.get("positionOrder") ?? "").trim()
+    if (!raw) throw new Error("手动编号不能为空")
+    const n = Number(raw)
     if (Number.isNaN(n)) throw new Error("展示排序必须是数字")
-    sortOrder = Math.trunc(n)
+    position = { mode: "manual", order: Math.trunc(n) }
   }
+
   const personsRaw = String(formData.get("persons") ?? "")
   let persons: { personId: string; role?: string }[] = []
   if (personsRaw) {
@@ -326,7 +343,7 @@ export async function saveQuestAction(formData: FormData) {
     category,
     chapter,
     stage,
-    sortOrder,
+    position,
     note,
     status,
     persons,

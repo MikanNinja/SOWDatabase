@@ -74,6 +74,8 @@ export interface Entity {
   deathPlaceFree?: string
   /** 人物专属：现状（生死状况，自由文本，可留空） */
   lifeStatus?: string
+  /** 人物详情页"相关任务"是否默认折叠（用于主角团等任务数量极多的人物） */
+  collapseRelatedQuests?: boolean
   status: ContentStatus
   aliases: string[]
   createdAt: string

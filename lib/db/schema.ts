@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS entities (
   death_place_id   TEXT,
   death_place_free TEXT NOT NULL DEFAULT '',
   life_status      TEXT NOT NULL DEFAULT '',
+  collapse_related_quests INTEGER NOT NULL DEFAULT 0,
   status     TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','published')),
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,

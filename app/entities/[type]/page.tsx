@@ -1,3 +1,4 @@
+import type { Metadata } from "next"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 import { getStore } from "@/lib/db/store"
@@ -9,6 +10,17 @@ export const dynamicParams = false
 
 export function generateStaticParams() {
   return ENTITY_TYPES.map((type) => ({ type }))
+}
+
+export async function generateMetadata(props: {
+  params: Promise<{ type: string }>
+}): Promise<Metadata> {
+  const { type } = await props.params
+  if (!ENTITY_TYPES.includes(type as (typeof ENTITY_TYPES)[number])) {
+    notFound()
+  }
+  const entityType = type as (typeof ENTITY_TYPES)[number]
+  return { title: `${ENTITY_TYPE_LABELS[entityType]}列表` }
 }
 
 export default async function EntityListPage(props: {

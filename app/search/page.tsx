@@ -1,5 +1,10 @@
+import type { Metadata } from "next"
 import Breadcrumb from "@/components/Breadcrumb"
 import SearchResults from "@/components/SearchResults"
+
+export const metadata: Metadata = {
+  title: "检索",
+}
 
 export default function SearchPage() {
   return (

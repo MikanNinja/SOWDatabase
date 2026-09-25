@@ -290,6 +290,20 @@ export default function EntityForm({
               defaultValue={entity?.lifeStatus ?? ""}
             />
           </div>
+
+          <div className="form-field">
+            <label>
+              <input
+                type="checkbox"
+                name="collapseRelatedQuests"
+                defaultChecked={entity?.collapseRelatedQuests ?? false}
+              />
+              <span className="checkbox-label">相关任务默认折叠</span>
+            </label>
+            <span className="hint">
+              
+            </span>
+          </div>
         </>
       )}
 
