@@ -50,3 +50,6 @@ next-env.d.ts
 /data
 /data/*.db
 /data/*.db-*
+
+# local developing docs
+/docs

@@ -58,6 +58,14 @@ export function splitPinnedTarget(target: string): PinnedTarget | null {
   return { base, slug }
 }
 
+export function wikiLinksToText(src: string): string {
+  return src.replace(/\[\[[^\[\]]+\]\]/g, (raw) => {
+    const parsed = parseWikiRaw(raw)
+    if (!parsed) return raw
+    return linkDisplayFallback(parsed.display, parsed.target)
+  })
+}
+
 export function extractWikiLinks(src: string): WikiLinkRaw[] {
   const out: WikiLinkRaw[] = []
   const re = /\[\[[^\[\]]+\]\]/g

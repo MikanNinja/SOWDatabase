@@ -2,6 +2,7 @@ import type { Metadata } from "next"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 import { getStore } from "@/lib/db/store"
+import { wikiLinksToText } from "@/lib/markdown"
 import { ENTITY_TYPE_LABELS, ENTITY_TYPES } from "@/lib/db/types"
 import Breadcrumb from "@/components/Breadcrumb"
 import TableFilter from "@/components/TableFilter"
@@ -100,7 +101,7 @@ export default async function EntityListPage(props: {
                       {entity.name}
                     </Link>
                   </td>
-                  <td>{entity.intro ? entity.intro.slice(0, 120) : ""}</td>
+                  <td>{entity.intro ? wikiLinksToText(entity.intro).slice(0, 120) : ""}</td>
                 </tr>
               ))}
             </tbody>

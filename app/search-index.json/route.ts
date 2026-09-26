@@ -1,4 +1,5 @@
 import { getStore } from "@/lib/db/store"
+import { wikiLinksToText } from "@/lib/markdown"
 import { QUEST_CATEGORY_LABELS } from "@/lib/db/types"
 
 export const dynamic = "force-static"
@@ -15,7 +16,7 @@ export async function GET() {
       aliases: entity.aliases,
       type: entity.type,
       slug: entity.slug,
-      intro: entity.intro.slice(0, 120),
+      intro: wikiLinksToText(entity.intro).slice(0, 120),
     })),
     quests: quests.map((quest) => ({
       name: quest.name,

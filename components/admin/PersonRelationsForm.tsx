@@ -93,7 +93,10 @@ export default function PersonRelationsForm({
               onChange={(e) => setFromId(e.target.value)}
             >
               {persons.map((p) => (
-                <option key={p.id} value={p.id}>{p.name}</option>
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                  {p.aliases.length > 0 ? `（${p.aliases.join("、")}）` : ""}
+                </option>
               ))}
             </select>
           </div>
@@ -108,7 +111,10 @@ export default function PersonRelationsForm({
             >
               <option value="">— 选择人物 —</option>
               {persons.filter((p) => p.id !== fromId).map((p) => (
-                <option key={p.id} value={p.id}>{p.name}</option>
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                  {p.aliases.length > 0 ? `（${p.aliases.join("、")}）` : ""}
+                </option>
               ))}
             </select>
           </div>
