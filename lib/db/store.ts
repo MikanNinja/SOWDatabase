@@ -3,6 +3,7 @@ import type {
   ContentStatus,
   Entity,
   EntityFaction,
+  EntityTreeNode,
   EntityType,
   ExportData,
   LinkCandidate,
@@ -155,6 +156,22 @@ export interface EntityInput {
   deathPlaceFree?: string
   /** 人物专属：现状（生死状况，自由文本，可留空） */
   lifeStatus?: string
+  /**
+   * 人物专属：分级（封闭三级枚举机器键，见 PERSON_PROMINENCES）。
+   * 语义：创建/更新均为全量替换——未传或空串=未分级；非人物类型在写入层强制清空；非法键抛错。
+   */
+  prominence?: string
+  /**
+   * 势力专属：类型（封闭四类枚举机器键，见 FACTION_KINDS）。
+   * 语义：创建/更新均为全量替换——未传或空串=未分类；非势力类型在写入层强制清空；非法键抛错。
+   */
+  factionKind?: string
+  /**
+   * 地点专属：辖区势力引用（对势力实体的软引用）。
+   * 语义：创建/更新均为全量替换——未传或空=未标注；非地点类型在写入层强制清空；
+   * 引用目标必须是存在且未删除的势力实体，否则抛错。
+   */
+  territoryFactionId?: string | null
   /** 人物详情页"相关任务"是否默认折叠（用于主角团等任务数量极多的人物） */
   collapseRelatedQuests?: boolean
   /** 人物专属：所属势力列表 */
@@ -198,11 +215,15 @@ export interface Store {
   getEntityBySlug(slug: string, opts?: { includeDraft?: boolean }): Promise<Entity | null>
   findEntityCandidates(name: string): Promise<LinkCandidate[]>
   searchEntitySuggestions(query: string): Promise<LinkCandidate[]>
+  /** v11：同名实体互链——名称池（标准名+非空别名）NOCASE 交集的其他已发布实体；类型固定序+拼音排序 */
+  getSameNameEntities(entityId: string): Promise<Entity[]>
   createEntity(input: EntityInput): Promise<Entity>
   updateEntity(id: string, input: EntityInput): Promise<Entity>
   deleteEntity(id: string): Promise<void>
   restoreEntity(id: string): Promise<void>
   getEntityCounts(status?: ContentStatus): Promise<Record<EntityType, number>>
+  /** 人物相关资料计数（已发布任务出场 + 整篇关联文本 + 相关段落块，三源简单相加），仅未删除人物 */
+  getPersonMaterialCounts(): Promise<Map<string, number>>
 
   // v2：人物所属势力
   getEntityFactions(entityId: string): Promise<EntityFaction[]>
@@ -214,6 +235,17 @@ export interface Store {
   getEntityAncestors(entityId: string, opts?: { publicOnly?: boolean }): Promise<Entity[]>
   // v2：层级——成环检测，返回 true 表示设置 parentId 会成环
   detectHierarchyCycle(entityId: string, candidateParentId: string): Promise<boolean>
+  /**
+   * v8：地点/势力结构树（结构总览页），返回**展示树**：
+   * - 节点排序全树统一：兄弟组内按"展示规模"降序（叶子=1、压缩链行=1、结构节点=1+Σ子级展示规模），
+   *   同规模（含链行按链首名）按名称拼音兜底；
+   * - "单链至叶"压缩为链行（首节点 chain 依序携带后续节点），链尾有分叉的整链不压缩；
+   * - publicOnly 时草稿/已删除节点从树中剔除，其已发布后代挂靠最近已发布祖先（无则成为顶层根）。
+   */
+  getEntityTrees(opts?: { publicOnly?: boolean }): Promise<{
+    place: EntityTreeNode[]
+    faction: EntityTreeNode[]
+  }>
 
   // v2：人物↔人物关系
   /** 获取人物的所有关系（双向聚合），返回含对端人物信息的结构 */

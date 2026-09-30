@@ -139,6 +139,9 @@ export default async function EntityDetailPage(props: {
     { label: entity.name },
   ]
 
+  // v11：同名实体互链（名称池交集的已发布实体）
+  const sameNameEntities = await store.getSameNameEntities(entity.id)
+
   // v3：出生地/死亡地关联实体（已发布才显示链接，否则回退自由文本）
   const birthPlace =
     entity.birthPlaceId && entity.type === "person"
@@ -274,6 +277,19 @@ export default async function EntityDetailPage(props: {
         <Breadcrumb items={breadcrumbItems} />
         <h1 className="page-title">{entity.name}</h1>
       </header>
+
+      {sameNameEntities.length > 0 && (
+        <p className="see-also">
+          参见：
+          {sameNameEntities.map((e, i) => (
+            <span key={e.id}>
+              {i > 0 && "、"}
+              <Link href={`/entities/${e.type}/${e.slug}`}>{e.name}</Link>（
+              {ENTITY_TYPE_LABELS[e.type]}）
+            </span>
+          ))}
+        </p>
+      )}
 
       {metaRows.length > 0 && (
         <dl className="record-meta">

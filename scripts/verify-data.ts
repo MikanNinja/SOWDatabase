@@ -1,6 +1,9 @@
 import { getStore } from "../lib/db/store"
 import { renderEntryBlocks, renderMarkdownContent } from "../lib/render"
 import { computeLinkIssues } from "../lib/links"
+import { personProminenceRank } from "../lib/db/types"
+import type { EntityTreeNode } from "../lib/db/types"
+import { compareZh } from "../lib/collate"
 
 async function main() {
   const store = await getStore()
@@ -19,7 +22,7 @@ async function main() {
   console.log("按不存在的名称解析[未知人物]:", missing.length, "(应为 0)")
 
   const personNames = entities.filter((e) => e.type === "person").map((e) => e.name)
-  console.log("人物拼音序（应为 阿澜、陆沉舟、沈砚、铜舌、闻霜）:", personNames.join("、"))
+  console.log("store 层人物拼音序（应为 阿澜、陆沉舟、沈砚、铜舌、闻霜）:", personNames.join("、"))
   if (personNames.join(",") !== "阿澜,陆沉舟,沈砚,铜舌,闻霜") {
     throw new Error("人物列表拼音序验证失败")
   }
@@ -491,7 +494,485 @@ async function main() {
   console.log("清理后任务总数（应为 4）:", afterCleanupCount.length)
   if (afterCleanupCount.length !== 4) throw new Error("位置演练清理验证失败")
 
-  console.log("\n验证完成（含 v2/v5 扩展）。")
+  // ========== v7 验证：人物分级 + 相关资料计数 ==========
+
+  console.log("\n--- v7 人物分级验证 ---")
+
+  // 场景 Q2：分级字段读写
+  const prominenceOf = (name: string) =>
+    entities.find((e) => e.name === name)?.prominence ?? "(缺失)"
+  console.log(
+    "分级读取（应为 major/major/minor/background/空）:",
+    prominenceOf("陆沉舟"), "/", prominenceOf("沈砚"), "/", prominenceOf("阿澜"), "/",
+    prominenceOf("铜舌"), "/", prominenceOf("闻霜") || "(空)"
+  )
+  if (prominenceOf("陆沉舟") !== "major") throw new Error("人物分级验证失败：陆沉舟")
+  if (prominenceOf("沈砚") !== "major") throw new Error("人物分级验证失败：沈砚")
+  if (prominenceOf("阿澜") !== "minor") throw new Error("人物分级验证失败：阿澜")
+  if (prominenceOf("铜舌") !== "background") throw new Error("人物分级验证失败：铜舌")
+  if (prominenceOf("闻霜") !== "") throw new Error("人物分级验证失败：闻霜应为未分级")
+
+  // 公开人物列表排序：分级置顶（主要 → 次要 → 背景 → 未分级），级内拼音兜底
+  const publicPersonOrder = entities
+    .filter((e) => e.type === "person" && e.status === "published")
+    .sort(
+      (a, b) =>
+        personProminenceRank(a.prominence) - personProminenceRank(b.prominence) ||
+        compareZh(a.name, b.name)
+    )
+    .map((e) => e.name)
+  console.log("公开人物列表顺序（应为 陆沉舟、沈砚、阿澜、铜舌、闻霜）:", publicPersonOrder.join("、"))
+  if (publicPersonOrder.join(",") !== "陆沉舟,沈砚,阿澜,铜舌,闻霜") {
+    throw new Error("人物分级置顶排序验证失败")
+  }
+
+  // 场景 Q3：非法分级键抛错不落库
+  let badProminenceThrew = false
+  try {
+    await store.createEntity({
+      type: "person",
+      name: "演练-非法分级",
+      prominence: "unknown",
+      status: "draft",
+    })
+  } catch {
+    badProminenceThrew = true
+  }
+  console.log("非法分级创建被拒绝（应为 true）:", badProminenceThrew)
+  if (!badProminenceThrew) throw new Error("人物分级键校验失败")
+
+  // 场景 Q4：非人物类型强制清空分级
+  const drillPlace = await store.createEntity({
+    type: "place",
+    name: "演练-带分级的地点",
+    prominence: "major",
+    status: "draft",
+  })
+  const drillPlaceAfter = await store.getEntityById(drillPlace.id)
+  console.log("地点携带分级写入结果（应为空串）:", JSON.stringify(drillPlaceAfter?.prominence))
+  if ((drillPlaceAfter?.prominence ?? "") !== "") {
+    throw new Error("非人物分级清空验证失败")
+  }
+  await store.deleteEntity(drillPlace.id)
+
+  // 场景 Q5：相关资料计数（任务出场 + 整篇关联 + 相关段落，简单相加，仅已发布）
+  const materialCounts = await store.getPersonMaterialCounts()
+  const expectCounts: [string, number][] = [
+    ["沈砚", 4], // 任务 2（雾中的火种、镜井的月影）+ 段落 2（T-001、T-002）
+    ["陆沉舟", 1], // 任务 1；T-003 为草稿不计
+    ["阿澜", 2], // 任务 2（镜井的月影、例行的潮信）
+    ["铜舌", 1], // 任务 1（例行的潮信）
+    ["闻霜", 1], // 段落 1（T-004）；草稿任务不计
+  ]
+  for (const [name, expected] of expectCounts) {
+    const entity = entities.find((e) => e.name === name)!
+    const actual = materialCounts.get(entity.id) ?? 0
+    console.log(`  ${name} 相关资料数（应为 ${expected}）:`, actual)
+    if (actual !== expected) throw new Error(`相关资料计数验证失败：${name}`)
+  }
+  // 计数仅针对人物：势力"潮汐议会"不应出现在结果中
+  const chaoxiInCounts = materialCounts.has(chaoxiyihuiEntity.id)
+  console.log("计数映射排除非人物（潮汐议会不在其中，应为 false）:", chaoxiInCounts)
+  if (chaoxiInCounts) throw new Error("相关资料计数应仅覆盖人物")
+
+  // 场景 Q6：导出自动携带分级；schemaVersion 不变
+  const exportV7 = await store.exportAll()
+  const shenyanExport = exportV7.entities.find((e) => e.name === "沈砚")
+  console.log("导出携带沈砚分级（应为 major）:", shenyanExport?.prominence)
+  if (shenyanExport?.prominence !== "major") throw new Error("导出人物分级验证失败")
+  console.log("导出 schemaVersion（仍应为 4）:", exportV7.schemaVersion)
+  if (exportV7.schemaVersion !== 4) throw new Error("导出 schemaVersion 应保持 4")
+
+  // ========== v8 验证：结构总览树（展示树：单链至叶压缩 + 展示规模排序） ==========
+
+  console.log("\n--- v8 结构总览验证 ---")
+
+  // 场景 R：树形组装与统一排序（兄弟组按展示规模降序，同规模含链行按链首名拼音兜底）
+  const trees = await store.getEntityTrees({ publicOnly: true })
+  const rootNames = (nodes: { name: string }[]) => nodes.map((n) => n.name).join(",")
+  // 白潮港—镜井、潮汐议会—测潮塔小组 均为"单链至叶"，压缩为链行后与叶子同层按拼音混排
+  console.log("地点树根序（应为 白潮港,灰烬台地）:", rootNames(trees.place))
+  if (rootNames(trees.place) !== "白潮港,灰烬台地") throw new Error("地点树根序验证失败")
+  const baichaogangNode = trees.place.find((n) => n.name === "白潮港")!
+  console.log(
+    "白潮港压缩形态（应为 children 空 + chain 镜井）:",
+    baichaogangNode.children.length, "/", rootNames(baichaogangNode.chain ?? [])
+  )
+  if (baichaogangNode.children.length !== 0 || rootNames(baichaogangNode.chain ?? []) !== "镜井") {
+    throw new Error("地点树单链压缩验证失败：白潮港—镜井 应为链行")
+  }
+  console.log("势力树根序（应为 北境灯卫,潮汐议会,无灯会）:", rootNames(trees.faction))
+  if (rootNames(trees.faction) !== "北境灯卫,潮汐议会,无灯会") {
+    throw new Error("势力树根序验证失败（链行与叶子应拼音混排：北境灯卫,潮汐议会,无灯会）")
+  }
+  const chaoxiNode = trees.faction.find((n) => n.name === "潮汐议会")!
+  console.log(
+    "潮汐议会压缩形态（应为 children 空 + chain 测潮塔小组）:",
+    chaoxiNode.children.length, "/", rootNames(chaoxiNode.chain ?? [])
+  )
+  if (chaoxiNode.children.length !== 0 || rootNames(chaoxiNode.chain ?? []) !== "测潮塔小组") {
+    throw new Error("势力树单链压缩验证失败：潮汐议会—测潮塔小组 应为链行")
+  }
+
+  // 场景 S：草稿剪枝与挂靠——草稿中间节点的已发布子级应挂靠到最近已发布祖先，随后按单链压缩
+  const drillTreeRoot = await store.createEntity({
+    type: "place",
+    name: "演练-树根",
+    status: "published",
+  })
+  const drillTreeDraft = await store.createEntity({
+    type: "place",
+    name: "演练-草稿中间",
+    parentId: drillTreeRoot.id,
+    status: "draft",
+  })
+  const drillTreeLeaf = await store.createEntity({
+    type: "place",
+    name: "演练-已发布叶子",
+    parentId: drillTreeDraft.id,
+    status: "published",
+  })
+  const treesPruned = await store.getEntityTrees({ publicOnly: true })
+  const drillRootNode = treesPruned.place.find((n) => n.name === "演练-树根")
+  const drillRootChainNames = drillRootNode ? rootNames(drillRootNode.chain ?? []) : ""
+  console.log("挂靠后演练树根压缩形态（应为 chain 演练-已发布叶子）:", drillRootChainNames)
+  if (!drillRootNode || drillRootNode.children.length !== 0 || drillRootChainNames !== "演练-已发布叶子") {
+    throw new Error("草稿挂靠验证失败：叶子应挂靠到已发布根并压缩为链行")
+  }
+  const collectNames = (nodes: EntityTreeNode[]): string[] =>
+    nodes.flatMap((n) => [n.name, ...collectNames(n.children)])
+  const prunedAllNames = collectNames(treesPruned.place)
+  if (prunedAllNames.includes("演练-草稿中间")) {
+    throw new Error("草稿剪枝验证失败：草稿节点不应出现在公开树中")
+  }
+  // 非 publicOnly 时草稿节点在树中，整链（根 → 草稿 → 叶子）压缩为一行
+  const treesAll = await store.getEntityTrees()
+  const drillAllRoot = treesAll.place.find((n) => n.name === "演练-树根")!
+  const drillAllChainNames = rootNames(drillAllRoot.chain ?? [])
+  console.log("含草稿整链压缩（应为 chain 演练-草稿中间,演练-已发布叶子）:", drillAllChainNames)
+  if (drillAllChainNames !== "演练-草稿中间,演练-已发布叶子") {
+    throw new Error("非 publicOnly 整链压缩验证失败")
+  }
+
+  // 场景 T：链尾分叉解压——链首获得第二个子级后应回到结构节点形态
+  const drillTreeLeaf2 = await store.createEntity({
+    type: "place",
+    name: "演练-已发布叶子2",
+    parentId: drillTreeRoot.id,
+    status: "published",
+  })
+  const treesForked = await store.getEntityTrees({ publicOnly: true })
+  const drillForkRoot = treesForked.place.find((n) => n.name === "演练-树根")!
+  console.log(
+    "分叉后演练树根形态（应为 children 演练-已发布叶子,演练-已发布叶子2 + 无 chain）:",
+    rootNames(drillForkRoot.children), "/", drillForkRoot.chain ? "有 chain" : "无 chain"
+  )
+  if (rootNames(drillForkRoot.children) !== "演练-已发布叶子,演练-已发布叶子2" || drillForkRoot.chain) {
+    throw new Error("链尾分叉解压验证失败")
+  }
+  await store.deleteEntity(drillTreeLeaf2.id)
+  await store.deleteEntity(drillTreeLeaf.id)
+  await store.deleteEntity(drillTreeDraft.id)
+  await store.deleteEntity(drillTreeRoot.id)
+  const treesAfterCleanup = await store.getEntityTrees({ publicOnly: true })
+  if (treesAfterCleanup.place.some((n) => n.name.startsWith("演练-"))) {
+    throw new Error("结构树演练清理验证失败")
+  }
+  console.log("演练清理后地点树根序（应为 白潮港,灰烬台地）:", rootNames(treesAfterCleanup.place))
+  if (rootNames(treesAfterCleanup.place) !== "白潮港,灰烬台地") {
+    throw new Error("结构树演练清理验证失败")
+  }
+
+  // ========== v9 验证：势力类型与独立势力分区 ==========
+
+  console.log("\n--- v9 势力类型验证 ---")
+
+  // 场景 U：类型读取与分区收录（顶层无子级按类型分组，未分类末位、组内拼音）
+  const chaoxiV9 = trees.faction.find((n) => n.name === "潮汐议会")!
+  console.log("潮汐议会类型（应为 org）:", chaoxiV9.factionKind)
+  if (chaoxiV9.factionKind !== "org") throw new Error("势力类型读取验证失败：潮汐议会")
+  const independent = trees.faction.filter((n) => n.children.length === 0)
+  const orgGroup = independent.filter((n) => n.factionKind === "org").map((n) => n.name)
+  const unclassified = independent.filter((n) => !n.factionKind).map((n) => n.name)
+  console.log("分区·组织/机构（应为 潮汐议会）:", orgGroup.join(","))
+  if (orgGroup.join(",") !== "潮汐议会") throw new Error("独立势力分区组织组验证失败")
+  console.log("分区·未分类（应为 北境灯卫,无灯会）:", unclassified.join(","))
+  if (unclassified.join(",") !== "北境灯卫,无灯会") throw new Error("独立势力分区未分类组验证失败")
+
+  // 场景 V：稳健性——分叉树根赋类型应留在主流程、不进分区，类型随节点携带
+  const drillKindRoot = await store.createEntity({
+    type: "faction",
+    name: "演练-类型分叉根",
+    factionKind: "nation",
+    status: "published",
+  })
+  const drillKindChildA = await store.createEntity({
+    type: "faction",
+    name: "演练-类型子甲",
+    parentId: drillKindRoot.id,
+    status: "published",
+  })
+  const drillKindChildB = await store.createEntity({
+    type: "faction",
+    name: "演练-类型子乙",
+    parentId: drillKindRoot.id,
+    status: "published",
+  })
+  const treesV9b = await store.getEntityTrees({ publicOnly: true })
+  const drillKindNode = treesV9b.faction.find((n) => n.name === "演练-类型分叉根")!
+  console.log(
+    "分叉根类型标注后形态（应为 children 2 + factionKind nation）:",
+    drillKindNode.children.length, "/", drillKindNode.factionKind
+  )
+  if (drillKindNode.children.length !== 2 || drillKindNode.factionKind !== "nation") {
+    throw new Error("分叉根类型标注验证失败：应留在主流程且类型随节点携带")
+  }
+  const independentV9b = treesV9b.faction.filter((n) => n.children.length === 0)
+  if (independentV9b.some((n) => n.name === "演练-类型分叉根")) {
+    throw new Error("分叉根不应进入独立势力分区")
+  }
+
+  // 场景 W：非法键拒绝 + 非势力清空
+  let badKindThrew = false
+  try {
+    await store.createEntity({
+      type: "faction",
+      name: "演练-非法类型",
+      factionKind: "unknown",
+      status: "draft",
+    })
+  } catch {
+    badKindThrew = true
+  }
+  console.log("非法势力类型被拒绝（应为 true）:", badKindThrew)
+  if (!badKindThrew) throw new Error("势力类型键校验失败")
+
+  const drillPersonKind = await store.createEntity({
+    type: "person",
+    name: "演练-带类型的人物",
+    factionKind: "nation",
+    status: "draft",
+  })
+  const drillPersonAfter = await store.getEntityById(drillPersonKind.id)
+  console.log("人物携带势力类型写入结果（应为空串）:", JSON.stringify(drillPersonAfter?.factionKind))
+  if ((drillPersonAfter?.factionKind ?? "") !== "") throw new Error("非势力类型清空验证失败")
+
+  // 导出自动携带；schemaVersion 不变
+  const exportV9 = await store.exportAll()
+  const chaoxiExport = exportV9.entities.find((e) => e.name === "潮汐议会")
+  console.log("导出携带潮汐议会类型（应为 org）:", chaoxiExport?.factionKind)
+  if (chaoxiExport?.factionKind !== "org") throw new Error("导出势力类型验证失败")
+  console.log("导出 schemaVersion（仍应为 4）:", exportV9.schemaVersion)
+  if (exportV9.schemaVersion !== 4) throw new Error("导出 schemaVersion 应保持 4")
+
+  // 清理演练节点
+  await store.deleteEntity(drillKindChildB.id)
+  await store.deleteEntity(drillKindChildA.id)
+  await store.deleteEntity(drillKindRoot.id)
+  await store.deleteEntity(drillPersonKind.id)
+
+  // ========== v10 验证：地点辖区与树页递归分区 ==========
+
+  console.log("\n--- v10 地点辖区验证 ---")
+
+  // 场景 X：辖区读取与根层分区（白潮港=潮汐议会辖区；灰烬台地未标注）
+  const treesV10 = await store.getEntityTrees({ publicOnly: true })
+  const baichaoV10 = treesV10.place.find((n) => n.name === "白潮港")!
+  console.log("白潮港辖区（应为 潮汐议会）:", baichaoV10.territory?.name ?? "(无)")
+  if (baichaoV10.territory?.name !== "潮汐议会") throw new Error("地点辖区读取验证失败：白潮港")
+  const huijinV10 = treesV10.place.find((n) => n.name === "灰烬台地")!
+  console.log("灰烬台地辖区（应为无）:", huijinV10.territory ? "有" : "无")
+  if (huijinV10.territory) throw new Error("未标注地点不应携带辖区")
+
+  // 场景 Y：悬空引用——被引用势力软删后，地点渲染视作未标注
+  const drillTerrFaction = await store.createEntity({
+    type: "faction",
+    name: "演练-辖区势力",
+    status: "published",
+  })
+  const drillTerrPlace = await store.createEntity({
+    type: "place",
+    name: "演练-辖区地点",
+    territoryFactionId: drillTerrFaction.id,
+    status: "published",
+  })
+  const treesV10b = await store.getEntityTrees({ publicOnly: true })
+  const drillTerrNode = treesV10b.place.find((n) => n.name === "演练-辖区地点")!
+  console.log(
+    "演练地点辖区（应为 演练-辖区势力）:",
+    drillTerrNode.territory?.name ?? "(无)"
+  )
+  if (drillTerrNode.territory?.name !== "演练-辖区势力") throw new Error("地点辖区分区验证失败")
+  await store.deleteEntity(drillTerrFaction.id)
+  const treesV10c = await store.getEntityTrees({ publicOnly: true })
+  const drillTerrAfter = treesV10c.place.find((n) => n.name === "演练-辖区地点")!
+  console.log(
+    "引用势力删除后演练地点辖区（应为无）:",
+    drillTerrAfter.territory ? "有" : "无"
+  )
+  if (drillTerrAfter.territory) throw new Error("悬空辖区引用应视作未标注")
+
+  // 场景 Z：非法引用拒绝（指向人物 / 不存在 id）+ 非地点清空
+  let terrOnPersonThrew = false
+  try {
+    await store.createEntity({
+      type: "place",
+      name: "演练-辖区指向人物",
+      territoryFactionId: shenyan[0].id,
+      status: "draft",
+    })
+  } catch {
+    terrOnPersonThrew = true
+  }
+  console.log("辖区引用指向人物被拒绝（应为 true）:", terrOnPersonThrew)
+  if (!terrOnPersonThrew) throw new Error("辖区引用类型校验失败")
+
+  let terrMissingThrew = false
+  try {
+    await store.createEntity({
+      type: "place",
+      name: "演练-辖区指向不存在",
+      territoryFactionId: "no-such-id",
+      status: "draft",
+    })
+  } catch {
+    terrMissingThrew = true
+  }
+  console.log("辖区引用指向不存在实体被拒绝（应为 true）:", terrMissingThrew)
+  if (!terrMissingThrew) throw new Error("辖区引用存在性校验失败")
+
+  const drillTerrPerson = await store.createEntity({
+    type: "person",
+    name: "演练-带辖区的人物",
+    territoryFactionId: chaoxiyihuiEntity.id,
+    status: "draft",
+  })
+  const drillTerrPersonAfter = await store.getEntityById(drillTerrPerson.id)
+  console.log(
+    "人物携带辖区写入结果（应为 null）:",
+    JSON.stringify(drillTerrPersonAfter?.territoryFactionId ?? null)
+  )
+  if (drillTerrPersonAfter?.territoryFactionId != null) throw new Error("非地点辖区清空验证失败")
+
+  // 导出自动携带；schemaVersion 不变
+  const exportV10 = await store.exportAll()
+  const baichaoExport = exportV10.entities.find((e) => e.name === "白潮港")
+  console.log("导出携带白潮港辖区（应为潮汐议会 id）:", baichaoExport?.territoryFactionId === chaoxiyihuiEntity.id)
+  if (baichaoExport?.territoryFactionId !== chaoxiyihuiEntity.id) throw new Error("导出地点辖区验证失败")
+  console.log("导出 schemaVersion（仍应为 4）:", exportV10.schemaVersion)
+  if (exportV10.schemaVersion !== 4) throw new Error("导出 schemaVersion 应保持 4")
+
+  // 清理演练节点
+  await store.deleteEntity(drillTerrPlace.id)
+  await store.deleteEntity(drillTerrPerson.id)
+
+  // ========== v11 验证：同名实体互链 ==========
+
+  console.log("\n--- v11 同名互链验证 ---")
+
+  // 场景 AA：跨类型同名对互见
+  const drillSameFaction = await store.createEntity({
+    type: "faction",
+    name: "演练-同名甲",
+    status: "published",
+  })
+  const drillSamePlace = await store.createEntity({
+    type: "place",
+    name: "演练-同名甲",
+    status: "published",
+  })
+  const sameForFaction = await store.getSameNameEntities(drillSameFaction.id)
+  const sameForPlace = await store.getSameNameEntities(drillSamePlace.id)
+  console.log(
+    "跨类型同名互见（势力侧→地点侧）:",
+    sameForFaction.map((e) => `${e.name}(${e.type})`).join(","),
+    "|",
+    sameForPlace.map((e) => `${e.name}(${e.type})`).join(",")
+  )
+  if (sameForFaction.length !== 1 || sameForFaction[0].id !== drillSamePlace.id) {
+    throw new Error("跨类型同名互链验证失败：势力侧")
+  }
+  if (sameForPlace.length !== 1 || sameForPlace[0].id !== drillSameFaction.id) {
+    throw new Error("跨类型同名互链验证失败：地点侧")
+  }
+
+  // 场景 AB：同类型别名对互见
+  const drillAliasPlaceA = await store.createEntity({
+    type: "place",
+    name: "演练-同名乙一",
+    aliases: ["演练-同名乙"],
+    status: "published",
+  })
+  const drillAliasPlaceB = await store.createEntity({
+    type: "place",
+    name: "演练-同名乙二",
+    aliases: ["演练-同名乙"],
+    status: "published",
+  })
+  const sameForAliasA = await store.getSameNameEntities(drillAliasPlaceA.id)
+  console.log(
+    "同类型别名互见（应为 演练-同名乙二(place)）:",
+    sameForAliasA.map((e) => `${e.name}(${e.type})`).join(",")
+  )
+  if (sameForAliasA.length !== 1 || sameForAliasA[0].id !== drillAliasPlaceB.id) {
+    throw new Error("同类型别名互链验证失败")
+  }
+
+  // 场景 AC：多目标排序（类型固定序 人物→地点→势力 + 拼音）
+  const drillOrderPerson = await store.createEntity({
+    type: "person",
+    name: "演练-同名丙",
+    status: "published",
+  })
+  const drillOrderPlace = await store.createEntity({
+    type: "place",
+    name: "演练-同名丙",
+    status: "published",
+  })
+  const drillOrderFaction = await store.createEntity({
+    type: "faction",
+    name: "演练-同名丙",
+    status: "published",
+  })
+  const sameForOrder = await store.getSameNameEntities(drillOrderPerson.id)
+  console.log("多目标排序（应为 place,faction）:", sameForOrder.map((e) => e.type).join(","))
+  if (sameForOrder.map((e) => e.type).join(",") !== "place,faction") {
+    throw new Error("同名互链排序验证失败")
+  }
+
+  // 场景 AD：草稿目标排除
+  await store.updateEntity(drillSamePlace.id, {
+    type: "place",
+    name: "演练-同名甲",
+    status: "draft",
+  })
+  const sameForFactionAfterDraft = await store.getSameNameEntities(drillSameFaction.id)
+  console.log("目标转草稿后参见数（应为 0）:", sameForFactionAfterDraft.length)
+  if (sameForFactionAfterDraft.length !== 0) throw new Error("草稿目标排除验证失败")
+
+  // 场景 AE：自身排除（别名等于自身标准名）
+  const drillSelf = await store.createEntity({
+    type: "person",
+    name: "演练-自名",
+    aliases: ["演练-自名"],
+    status: "published",
+  })
+  const sameForSelf = await store.getSameNameEntities(drillSelf.id)
+  const selfExcluded = !sameForSelf.some((e) => e.id === drillSelf.id)
+  console.log("自身排除（应为 true）:", selfExcluded)
+  if (!selfExcluded) throw new Error("自身排除验证失败")
+
+  // 清理演练节点
+  await store.deleteEntity(drillSameFaction.id)
+  await store.deleteEntity(drillSamePlace.id)
+  await store.deleteEntity(drillAliasPlaceA.id)
+  await store.deleteEntity(drillAliasPlaceB.id)
+  await store.deleteEntity(drillOrderPerson.id)
+  await store.deleteEntity(drillOrderPlace.id)
+  await store.deleteEntity(drillOrderFaction.id)
+  await store.deleteEntity(drillSelf.id)
+
+  console.log("\n验证完成（含 v2/v5/v7/v8/v9/v10/v11 扩展）。")
 }
 
 main().catch((err) => {

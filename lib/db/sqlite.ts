@@ -7,6 +7,7 @@ import type {
   ContentStatus,
   Entity,
   EntityFaction,
+  EntityTreeNode,
   EntityType,
   ExportData,
   LinkCandidate,
@@ -44,7 +45,15 @@ import { extractWikiLinks, splitBlocks } from "../markdown"
 import { resolveWikiLink } from "../links"
 import { linesToList, newId, nowIso, slugify } from "../utils"
 import { compareZh } from "../collate"
-import { ENTITY_TYPE_LABELS, QUEST_CATEGORIES } from "./types"
+import {
+  ENTITY_TYPE_LABELS,
+  ENTITY_TYPES,
+  FACTION_KINDS,
+  isFactionKind,
+  isPersonProminence,
+  PERSON_PROMINENCES,
+  QUEST_CATEGORIES,
+} from "./types"
 
 type EntityRow = {
   id: string
@@ -69,6 +78,9 @@ type EntityRow = {
   death_place_free: string
   life_status: string
   collapse_related_quests: number
+  prominence: string
+  faction_kind: string
+  territory_faction_id: string | null
   status: ContentStatus
   created_at: string
   updated_at: string
@@ -224,6 +236,18 @@ export class SQLiteStore implements Store {
       const colsAfter = this.db.prepare("PRAGMA table_info(entities)").all() as { name: string }[]
       if (!colsAfter.some((c) => c.name === "collapse_related_quests")) {
         this.tryAddColumn("entities", "collapse_related_quests", "INTEGER NOT NULL DEFAULT 0")
+      }
+      // v7：人物分级（封闭三级枚举机器键；仅 person 可赋值，写入层强制非人物清空）
+      if (!colsAfter.some((c) => c.name === "prominence")) {
+        this.tryAddColumn("entities", "prominence", "TEXT NOT NULL DEFAULT ''")
+      }
+      // v9：势力类型（封闭四类枚举机器键；仅 faction 可赋值，写入层强制非势力清空）
+      if (!colsAfter.some((c) => c.name === "faction_kind")) {
+        this.tryAddColumn("entities", "faction_kind", "TEXT NOT NULL DEFAULT ''")
+      }
+      // v10：地点辖区（对势力实体的软引用；仅 place 可赋值，写入层强制非地点清空并校验引用有效性）
+      if (!colsAfter.some((c) => c.name === "territory_faction_id")) {
+        this.tryAddColumn("entities", "territory_faction_id", "TEXT")
       }
       // v5：text_entries 补 quest_id 列（既有库 ALTER 补齐；须先于 SQLITE_SCHEMA，
       // 因为 schema 会创建依赖该列的 idx_text_entries_quest 索引）。
@@ -499,6 +523,9 @@ export class SQLiteStore implements Store {
       deathPlaceFree: row.death_place_free ?? "",
       lifeStatus: row.life_status ?? "",
       collapseRelatedQuests: row.collapse_related_quests ? true : false,
+      prominence: row.prominence ?? "",
+      factionKind: row.faction_kind ?? "",
+      territoryFactionId: row.territory_faction_id ?? null,
       status: row.status,
       aliases,
       createdAt: row.created_at,
@@ -719,6 +746,41 @@ export class SQLiteStore implements Store {
       .sort((a, b) => compareZh(a.label, b.label))
   }
 
+  /**
+   * v11：同名实体互链——取自身名称池（标准名 + 非空别名），匹配其他已发布、未删除实体的
+   * 标准名或别名（COLLATE NOCASE，与 findEntityCandidates 匹配口径一致），排除自身；
+   * 结果按类型固定序（人物→地点→势力）+ 名称拼音排序，供详情页"参见"行消费。
+   */
+  async getSameNameEntities(entityId: string): Promise<Entity[]> {
+    const rows = this.db
+      .prepare(
+        `WITH pool(name) AS (
+           SELECT name FROM entities WHERE id = ? AND deleted = 0
+           UNION
+           SELECT alias FROM entity_aliases WHERE entity_id = ? AND trim(alias) <> ''
+         )
+         SELECT e.* FROM entities e
+         WHERE e.deleted = 0 AND e.status = 'published' AND e.id != ?
+           AND (
+             e.name COLLATE NOCASE IN (SELECT name FROM pool)
+             OR EXISTS (
+               SELECT 1 FROM entity_aliases a
+               WHERE a.entity_id = e.id AND trim(a.alias) <> ''
+                 AND a.alias COLLATE NOCASE IN (SELECT name FROM pool)
+             )
+           )`
+      )
+      .all(entityId, entityId, entityId) as EntityRow[]
+    const aliasMap = this.aliasesFor(rows.map((r) => r.id))
+    return rows
+      .map((r) => this.rowToEntity(r, aliasMap.get(r.id) ?? []))
+      .sort(
+        (a, b) =>
+          ENTITY_TYPES.indexOf(a.type) - ENTITY_TYPES.indexOf(b.type) ||
+          compareZh(a.name, b.name)
+      )
+  }
+
   async createEntity(input: EntityInput): Promise<Entity> {
     const now = nowIso()
     const id = newId()
@@ -745,6 +807,10 @@ export class SQLiteStore implements Store {
     const deathPlaceId = input.deathPlaceId ? input.deathPlaceId.trim() || null : null
     const deathPlaceFree = (input.deathPlaceFree ?? "").trim()
     const lifeStatus = (input.lifeStatus ?? "").trim()
+    const prominence = type === "person" ? this.normalizeProminence(input.prominence) : ""
+    const factionKind = type === "faction" ? this.normalizeFactionKind(input.factionKind) : ""
+    const territoryFactionId =
+      type === "place" ? await this.normalizeTerritory(input.territoryFactionId) : null
     const collapseRelatedQuests = input.collapseRelatedQuests ? 1 : 0
 
     // 校验父级：同类型、未删除、无环
@@ -759,9 +825,9 @@ export class SQLiteStore implements Store {
         `INSERT INTO entities (id, slug, type, name, intro, note, race, parent_id,
            birth_year, birth_month, birth_day, birth_circa, death_year, death_month, death_day, death_circa,
            birth_place_id, birth_place_free, death_place_id, death_place_free,
-           life_status, collapse_related_quests,
+           life_status, prominence, faction_kind, territory_faction_id, collapse_related_quests,
            status, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         id,
@@ -785,6 +851,9 @@ export class SQLiteStore implements Store {
         deathPlaceId,
         deathPlaceFree,
         lifeStatus,
+        prominence,
+        factionKind,
+        territoryFactionId,
         collapseRelatedQuests,
         status,
         now,
@@ -822,6 +891,13 @@ export class SQLiteStore implements Store {
     const deathPlaceId = input.deathPlaceId ? input.deathPlaceId.trim() || null : null
     const deathPlaceFree = (input.deathPlaceFree ?? "").trim()
     const lifeStatus = (input.lifeStatus ?? "").trim()
+    // 分级跟随新类型：改类型为非人物时强制清空；未传视为未分级（全量替换语义，与 race 一致）
+    const prominence = input.type === "person" ? this.normalizeProminence(input.prominence) : ""
+    // 类型跟随新类型：改类型为非势力时强制清空；未传视为未分类（全量替换语义）
+    const factionKind = input.type === "faction" ? this.normalizeFactionKind(input.factionKind) : ""
+    // 辖区跟随新类型：改类型为非地点时强制清空；未传视为未标注（全量替换语义）
+    const territoryFactionId =
+      input.type === "place" ? await this.normalizeTerritory(input.territoryFactionId) : null
     const collapseRelatedQuests = input.collapseRelatedQuests ? 1 : 0
 
     let finalAliases = aliases
@@ -841,7 +917,7 @@ export class SQLiteStore implements Store {
         `UPDATE entities SET slug = ?, type = ?, name = ?, intro = ?, note = ?, race = ?, parent_id = ?,
            birth_year = ?, birth_month = ?, birth_day = ?, birth_circa = ?, death_year = ?, death_month = ?, death_day = ?, death_circa = ?,
            birth_place_id = ?, birth_place_free = ?, death_place_id = ?, death_place_free = ?,
-           life_status = ?, collapse_related_quests = ?,
+           life_status = ?, prominence = ?, faction_kind = ?, territory_faction_id = ?, collapse_related_quests = ?,
            status = ?, updated_at = ? WHERE id = ?`
       )
       .run(
@@ -865,6 +941,9 @@ export class SQLiteStore implements Store {
         deathPlaceId,
         deathPlaceFree,
         lifeStatus,
+        prominence,
+        factionKind,
+        territoryFactionId,
         collapseRelatedQuests,
         input.status ?? existing.status,
         now,
@@ -906,6 +985,43 @@ export class SQLiteStore implements Store {
     if (await this.detectHierarchyCycle(entityId, parentId)) {
       throw new Error("不能将自身或后代设为上级，这会形成层级环")
     }
+  }
+
+  /** 人物分级归一：空值 → 未分级（空串）；非法键抛错不落库 */
+  private normalizeProminence(value: string | undefined | null): string {
+    const v = (value ?? "").trim()
+    if (!v) return ""
+    if (!isPersonProminence(v)) {
+      throw new Error(
+        `非法的人物分级：「${v}」。可选值：${PERSON_PROMINENCES.join("、")} 或留空（未分级）。`
+      )
+    }
+    return v
+  }
+
+  /** 势力类型归一：空值 → 未分类（空串）；非法键抛错不落库 */
+  private normalizeFactionKind(value: string | undefined | null): string {
+    const v = (value ?? "").trim()
+    if (!v) return ""
+    if (!isFactionKind(v)) {
+      throw new Error(
+        `非法的势力类型：「${v}」。可选值：${FACTION_KINDS.join("、")} 或留空（未分类）。`
+      )
+    }
+    return v
+  }
+
+  /** 地点辖区归一：空值 → null；引用目标必须为存在且未删除的势力实体，否则抛错不落库 */
+  private async normalizeTerritory(value: string | null | undefined): Promise<string | null> {
+    const v = (value ?? "").trim()
+    if (!v) return null
+    const row = this.db
+      .prepare("SELECT type FROM entities WHERE id = ? AND deleted = 0")
+      .get(v) as { type: string } | undefined
+    if (!row || row.type !== "faction") {
+      throw new Error("辖区势力必须是存在且未删除的势力实体")
+    }
+    return v
   }
 
   private async replaceFactions(entityId: string, factions: FactionInput[]): Promise<void> {
@@ -1312,6 +1428,45 @@ export class SQLiteStore implements Store {
     return counts
   }
 
+  /**
+   * 人物相关资料计数（三源简单相加，仅未删除人物）：
+   * - 已发布任务的出场关联数（quest_characters ⋈ quests）
+   * - 已发布文本的整篇级关联数（text_entity_associations ⋈ text_entries）
+   * - 已发布文本的相关段落块数（content_links ⋈ text_blocks ⋈ text_entries，按块去重）
+   * 口径为简单相加：整篇关联文本内的段落若另有段落级链接会被计入两处（已知并接受的近似）。
+   * 一次聚合出全量映射，供人物列表页批量渲染，避免逐人查询。
+   */
+  async getPersonMaterialCounts(): Promise<Map<string, number>> {
+    const rows = this.db
+      .prepare(
+        `SELECT r.entity_id, SUM(r.cnt) AS total
+         FROM (
+           SELECT qc.person_id AS entity_id, COUNT(*) AS cnt
+           FROM quest_characters qc
+           JOIN quests q ON q.id = qc.quest_id
+           WHERE q.deleted = 0 AND q.status = 'published'
+           GROUP BY qc.person_id
+           UNION ALL
+           SELECT a.target_id AS entity_id, COUNT(*) AS cnt
+           FROM text_entity_associations a
+           JOIN text_entries e ON e.id = a.entry_id
+           WHERE e.deleted = 0 AND e.status = 'published'
+           GROUP BY a.target_id
+           UNION ALL
+           SELECT l.target_id AS entity_id, COUNT(DISTINCT l.block_id) AS cnt
+           FROM content_links l
+           JOIN text_blocks b ON b.id = l.block_id
+           JOIN text_entries e ON e.id = b.entry_id
+           WHERE l.target_kind = 'entity' AND e.deleted = 0 AND e.status = 'published'
+           GROUP BY l.target_id
+         ) r
+         JOIN entities p ON p.id = r.entity_id AND p.type = 'person' AND p.deleted = 0
+         GROUP BY r.entity_id`
+      )
+      .all() as { entity_id: string; total: number }[]
+    return new Map(rows.map((r) => [r.entity_id, r.total]))
+  }
+
   async getEntityFactions(entityId: string): Promise<EntityFaction[]> {
     const rows = this.db
       .prepare(
@@ -1408,6 +1563,118 @@ export class SQLiteStore implements Store {
       currentId = row.parent_id
     }
     return false
+  }
+
+  /**
+   * v8：地点/势力结构树（结构总览页），返回**展示树**：
+   * - 节点排序全树统一：兄弟组内按"展示规模"降序（叶子=1、压缩链行=1、结构节点=1+Σ子级展示规模），
+   *   同规模（含链行按链首名）按名称拼音兜底；
+   * - "单链至叶"压缩为链行（链上每节点恰一子、链尾为叶子；多级链整条一行），链尾有分叉的整链不压缩；
+   * - publicOnly 时草稿节点不入树，其已发布后代沿 parent 链上溯挂靠最近已发布祖先（无则成为顶层根），
+   *   与公开面包屑 getEntityAncestors 的跳过行为一致。
+   */
+  async getEntityTrees(opts: { publicOnly?: boolean } = {}): Promise<{
+    place: EntityTreeNode[]
+    faction: EntityTreeNode[]
+  }> {
+    const publicOnly = opts.publicOnly ?? false
+    const rows = this.db
+      .prepare(
+        `SELECT id, name, slug, type, parent_id, status, faction_kind, territory_faction_id FROM entities
+         WHERE deleted = 0 AND type IN ('place', 'faction')`
+      )
+      .all() as {
+      id: string
+      name: string
+      slug: string
+      type: EntityType
+      parent_id: string | null
+      status: ContentStatus
+      faction_kind: string
+      territory_faction_id: string | null
+    }[]
+    const byId = new Map(rows.map((r) => [r.id, r]))
+    const included = new Map<string, EntityTreeNode & { type: "place" | "faction" }>()
+    for (const r of rows) {
+      if (!publicOnly || r.status === "published") {
+        included.set(r.id, {
+          id: r.id,
+          name: r.name,
+          slug: r.slug,
+          type: r.type as "place" | "faction",
+          factionKind: r.faction_kind ?? "",
+          children: [],
+        })
+      }
+    }
+    // 地点辖区解析：引用目标在节点集合内（publicOnly 下即已发布势力）才携带；悬空/未标注则缺省
+    for (const node of included.values()) {
+      const r = byId.get(node.id)!
+      if (r.type === "place" && r.territory_faction_id) {
+        const faction = included.get(r.territory_faction_id)
+        if (faction) node.territory = { id: faction.id, name: faction.name }
+      }
+    }
+    const roots: Record<"place" | "faction", (EntityTreeNode & { type: "place" | "faction" })[]> = {
+      place: [],
+      faction: [],
+    }
+    for (const node of included.values()) {
+      let pid = byId.get(node.id)?.parent_id ?? null
+      let attached = false
+      while (pid) {
+        const ancestor = included.get(pid)
+        if (ancestor) {
+          ancestor.children.push(node)
+          attached = true
+          break
+        }
+        pid = byId.get(pid)?.parent_id ?? null
+      }
+      if (!attached) roots[node.type].push(node)
+    }
+    // 单链至叶压缩：先处理 n 自身（原始 children 仍完整时判定整链），链尾分叉则仅递归链首
+    const compress = (n: EntityTreeNode): void => {
+      if (n.children.length === 1) {
+        const chainNodes: EntityTreeNode[] = []
+        let cur = n.children[0]
+        while (cur.children.length === 1) {
+          chainNodes.push(cur)
+          cur = cur.children[0]
+        }
+        if (cur.children.length === 0) {
+          chainNodes.push(cur)
+          n.chain = chainNodes
+          for (const c of chainNodes) c.children = []
+          n.children = []
+          return
+        }
+        compress(cur)
+        return
+      }
+      for (const child of n.children) compress(child)
+    }
+    for (const list of [roots.place, roots.faction]) {
+      for (const root of list) compress(root)
+    }
+    const sizeCache = new Map<string, number>()
+    const sizeOf = (n: EntityTreeNode): number => {
+      const cached = sizeCache.get(n.id)
+      if (cached != null) return cached
+      const v = n.chain ? 1 : 1 + n.children.reduce((s, k) => s + sizeOf(k), 0)
+      sizeCache.set(n.id, v)
+      return v
+    }
+    const bySize = (a: EntityTreeNode, b: EntityTreeNode) => sizeOf(b) - sizeOf(a) || compareZh(a.name, b.name)
+    const sortRec = (n: EntityTreeNode) => {
+      n.children.sort(bySize)
+      n.children.forEach(sortRec)
+    }
+    for (const list of [roots.place, roots.faction]) {
+      list.sort(bySize)
+      list.forEach(sortRec)
+    }
+    return { place: roots.place, faction: roots.faction }
   }
 
   // ---------- v2：人物关系 ----------

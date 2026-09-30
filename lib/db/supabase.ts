@@ -4,6 +4,7 @@ import type {
   ContentStatus,
   Entity,
   EntityFaction,
+  EntityTreeNode,
   EntityType,
   ExportData,
   LinkCandidate,
@@ -820,6 +821,21 @@ export class SupabaseStore implements Store {
 
   async getQuestsForPerson(): Promise<QuestPersonRef[]> {
     throw new Error("Supabase 后端已弃用，不支持任务；请使用默认 SQLite 后端")
+  }
+
+  async getPersonMaterialCounts(): Promise<Map<string, number>> {
+    throw new Error("Supabase 后端已弃用；请使用默认 SQLite 后端")
+  }
+
+  async getEntityTrees(): Promise<{
+    place: EntityTreeNode[]
+    faction: EntityTreeNode[]
+  }> {
+    throw new Error("Supabase 后端已弃用；请使用默认 SQLite 后端")
+  }
+
+  async getSameNameEntities(): Promise<Entity[]> {
+    throw new Error("Supabase 后端已弃用；请使用默认 SQLite 后端")
   }
 
   private async getRelationById(id: string): Promise<PersonRelation | null> {

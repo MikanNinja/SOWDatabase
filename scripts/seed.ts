@@ -33,13 +33,14 @@ async function main() {
     footerText: "内容公开可读，仅由站点拥有者维护。",
   })
 
-  // 势力（先创建，便于人物引用）
+  // 势力（先创建，便于人物引用；v9：潮汐议会=组织/机构，链行根进入独立势力分区）
   const chaoxiyihui = await store.createEntity({
     type: "faction",
     name: "潮汐议会",
     aliases: ["议会"],
     intro: "管理白潮港航道和测潮记录的地方组织。",
-    note: "部分 NPC 对话只称其为“议会”。",
+    note: "部分 NPC 对话只称其为“议会”。v9 测试：类型=组织/机构（链行根，独立势力分区）。",
+    factionKind: "org",
     status: "published",
   })
   const wudeng = await store.createEntity({
@@ -69,13 +70,14 @@ async function main() {
     status: "published",
   })
 
-  // 地点
+  // 地点（v10：白潮港辖区=潮汐议会——地点树根层分区 fixture）
   const baichaogang = await store.createEntity({
     type: "place",
     name: "白潮港",
     aliases: ["旧港"],
     intro: "雾海边境最大的贸易港，也是多数旅人进入群岛的地方。",
     note: "文本中“港口”有时泛指白潮港，但不是正式别名。",
+    territoryFactionId: chaoxiyihui.id,
     status: "published",
   })
   await store.createEntity({
@@ -97,7 +99,8 @@ async function main() {
     status: "published",
   })
 
-  // 人物（v2：带种族与所属势力）
+  // 人物（v2：带种族与所属势力；v7：人物分级）
+  // 分级：陆沉舟/沈砚=主要人物、阿澜=次要人物、铜舌=背景人物（出场极少但值得注意）、闻霜=未分级
   const shenyan = await store.createEntity({
     type: "person",
     name: "沈砚",
@@ -106,6 +109,7 @@ async function main() {
     note: "部分文本只使用“那个穿黑衣服的人”指代他，该称呼不是别名。",
     race: "人族",
     lifeStatus: "下落不明",
+    prominence: "major",
     factions: [{ factionId: wudeng.id, role: "外围联络人" }],
     status: "published",
   })
@@ -116,6 +120,7 @@ async function main() {
     intro: "白潮港的测潮师，负责记录每天的雾潮方向。",
     note: "她的公开记录常常以工作日志形式出现。",
     race: "人族",
+    prominence: "minor",
     factions: [{ factionId: chaoxiyihui.id, role: "测潮师" }],
     status: "published",
   })
@@ -126,6 +131,7 @@ async function main() {
     intro: "一名负责守护北方灯塔的年轻守卫。",
     note: "他的姓氏在早期记录中曾被误写为“陆沉州”，该错误不作为正式别名。",
     race: "人族",
+    prominence: "major",
     factions: [{ factionId: beijingdengwei.id, role: "灯塔守卫" }],
     status: "published",
   })
@@ -145,8 +151,9 @@ async function main() {
     name: "铜舌",
     aliases: ["古铜守卫"],
     intro: "北方灯塔底层残留的古代机关守卫，仍以铜制舌片发出指令。",
-    note: "v2 测试：机关族种族 + 北境灯卫成员。",
+    note: "v2 测试：机关族种族 + 北境灯卫成员。v7 测试：背景人物分级。",
     race: "机关族",
+    prominence: "background",
     factions: [{ factionId: beijingdengwei.id, role: "古代机关守卫" }],
     status: "published",
   })
@@ -316,12 +323,15 @@ async function main() {
     { targetId: chaoxiyihui.id },
   ])
 
-  console.log("种子数据已写入（含 v2/v5 扩展）。")
+  console.log("种子数据已写入（含 v2/v5/v7 扩展）。")
   console.log(`- 实体：12 个（人物 5、地点 3、势力 4）`)
   console.log(`  - 人物种族：4 人族 + 1 机关族（铜舌）`)
+  console.log(`  - 人物分级：主要人物（陆沉舟、沈砚）、次要人物（阿澜）、背景人物（铜舌）、未分级（闻霜）`)
   console.log(`  - 所属势力：每人物带角色/备注`)
-  console.log(`  - 地点层级：镜井 → 白潮港`)
+  console.log(`  - 地点层级：镜�?→ 白潮港`)
   console.log(`  - 势力层级：测潮塔小组 → 潮汐议会`)
+  console.log(`  - 势力类型：潮汐议会=组织/机构（v9）`)
+  console.log(`  - 地点辖区：白潮港=潮汐议会（v10）`)
   console.log(`- 任务（独立表）：4 个（雾中的火种（主线·第一篇章·进程二）、镜井的月影（个人·第一篇章）、例行的潮信（日常）、未公开的委托（草稿·次要））`)
   console.log(`  - 出场人物：7 条关联（雾中的火种 2、镜井的月影 2、例行的潮信 2、草稿 1）`)
   console.log(`- 文本条目：6 条（T-003、T-006 归属任务“雾中的火种”，一对多）`)

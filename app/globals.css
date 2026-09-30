@@ -286,6 +286,64 @@ h3 {
   color: var(--muted);
 }
 
+.see-also {
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin: 0 0 0.6rem;
+}
+
+.entity-tree {
+  list-style: none;
+  margin: 0.4rem 0 0;
+  padding: 0;
+}
+
+.entity-tree ul {
+  list-style: none;
+  margin: 0;
+  padding-left: 1.4rem;
+}
+
+.entity-tree li {
+  line-height: 1.75;
+}
+
+.entity-tree summary {
+  cursor: pointer;
+}
+
+.entity-tree summary::marker,
+.entity-tree summary::-webkit-details-marker {
+  color: var(--muted);
+}
+
+.entity-tree li.tree-leaf::before {
+  content: "•";
+  color: var(--muted);
+  margin-right: 0.4rem;
+}
+
+.entity-tree .tree-chain {
+  color: var(--muted);
+}
+
+.entity-tree .tree-count {
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.entity-tree-group h3 {
+  font-size: 1rem;
+  margin: 0.6rem 0 0;
+}
+
+.entity-tree-group h4 {
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin: 0.7rem 0 0;
+}
+
 .record-header {
   border-bottom: 1px solid var(--line);
   margin-bottom: 1rem;

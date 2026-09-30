@@ -85,6 +85,12 @@ export async function saveEntityAction(formData: FormData) {
   const deathPlaceId = deathPlaceIdRaw || null
   const deathPlaceFree = String(formData.get("deathPlaceFree") ?? "").trim()
   const lifeStatus = String(formData.get("lifeStatus") ?? "").trim()
+  // 人物分级（封闭三级枚举机器键；仅 person 有实际意义，非人物由 store 写入层强制清空）
+  const prominence = String(formData.get("prominence") ?? "").trim()
+  // 势力类型（封闭四类枚举机器键；仅 faction 有实际意义，非势力由 store 写入层强制清空）
+  const factionKind = String(formData.get("factionKind") ?? "").trim()
+  // 地点辖区势力引用（软引用；仅 place 有实际意义，非地点由 store 写入层强制清空并校验引用）
+  const territoryFactionId = String(formData.get("territoryFactionId") ?? "").trim() || null
   // 人物详情页"相关任务"默认折叠标记（仅 person 有实际意义；其他类型存 0 不影响）
   const collapseRelatedQuests = formData.get("collapseRelatedQuests") === "on"
 
@@ -109,6 +115,9 @@ export async function saveEntityAction(formData: FormData) {
     deathPlaceId,
     deathPlaceFree,
     lifeStatus,
+    prominence,
+    factionKind,
+    territoryFactionId,
     collapseRelatedQuests,
     factions,
     status,

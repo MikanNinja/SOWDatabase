@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { ENTITY_TYPE_LABELS, ENTITY_TYPES } from "@/lib/db/types"
+import { ENTITY_TYPE_LABELS, ENTITY_TYPES, FACTION_KINDS, FACTION_KIND_LABELS, PERSON_PROMINENCES, PERSON_PROMINENCE_LABELS } from "@/lib/db/types"
 import type { Entity, EntityFaction } from "@/lib/db/types"
 import { saveEntityAction } from "@/app/admin/actions"
 import SubmitButton from "@/components/admin/SubmitButton"
@@ -168,6 +168,25 @@ export default function EntityForm({
           </div>
 
           <div className="form-field">
+            <label htmlFor="prominence">人物分级</label>
+            <select
+              id="prominence"
+              name="prominence"
+              defaultValue={entity?.prominence ?? ""}
+            >
+              <option value="">未分级</option>
+              {PERSON_PROMINENCES.map((p) => (
+                <option key={p} value={p}>
+                  {PERSON_PROMINENCE_LABELS[p]}
+                </option>
+              ))}
+            </select>
+            <span className="hint">
+              主要人物：可操控角色、主要反派等；次要人物：有一定出场率的NPC；背景人物：出场极少但格外值得注意的人物。未分级人员不参与列表置顶。
+            </span>
+          </div>
+
+          <div className="form-field">
             <label>出生</label>
             <div className="date-row">
               <input
@@ -327,6 +346,51 @@ export default function EntityForm({
               ))}
           </select>
           <span className="hint">上级必须是同类型实体；不能将自身或后代设为上级。</span>
+        </div>
+      )}
+
+      {/* 地点专属字段：辖区势力 */}
+      {type === "place" && (
+        <div className="form-field">
+          <label htmlFor="territoryFactionId">辖区势力</label>
+          <select
+            id="territoryFactionId"
+            name="territoryFactionId"
+            defaultValue={entity?.territoryFactionId ?? ""}
+          >
+            <option value="">— 无 —</option>
+            {availableFactions.map((f) => (
+              <option key={f.id} value={f.id}>
+                {f.name}
+                {f.aliases.length > 0 ? `（${f.aliases.join("、")}）` : ""}
+              </option>
+            ))}
+          </select>
+          <span className="hint">
+            政治归属标注，与上级地理结构无关。用于结构总览页地点树的辖区分区；引用的势力转草稿或删除后视作未标注。
+          </span>
+        </div>
+      )}
+
+      {/* 势力专属字段：类型 */}
+      {type === "faction" && (
+        <div className="form-field">
+          <label htmlFor="factionKind">势力类型</label>
+          <select
+            id="factionKind"
+            name="factionKind"
+            defaultValue={entity?.factionKind ?? ""}
+          >
+            <option value="">未分类</option>
+            {FACTION_KINDS.map((k) => (
+              <option key={k} value={k}>
+                {FACTION_KIND_LABELS[k]}
+              </option>
+            ))}
+          </select>
+          <span className="hint">
+            本体分类标注，与上级结构无关。用于结构总览页「独立势力」分区分组；拥有上下级结构的势力标注后暂不改变树页展示。
+          </span>
         </div>
       )}
 

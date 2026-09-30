@@ -26,6 +26,7 @@ export default async function Header() {
           <Link href="/entities/faction">
             势力 <span className="nav-count">{counts.faction}</span>
           </Link>
+          <Link href="/tree">结构</Link>
           <Link href="/quests">
             任务 <span className="nav-count">{questCount}</span>
           </Link>

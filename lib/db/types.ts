@@ -37,6 +37,68 @@ export const STATUS_LABELS: Record<ContentStatus, string> = {
   published: "已发布",
 }
 
+/**
+ * 人物分级（封闭三级枚举，仅 person 类型可赋值；存储机器键，展示用标签映射）。
+ * 未分级的人物存空串，不进入人物列表置顶分组，留在主拼音索引区。
+ * 语义：分级是"编辑选出的浏览优先级"，与任务数、文本数等派生量无关；
+ * 主要人物：可操控角色、主要反派等；次要人物：有一定出场率的NPC；
+ * 背景人物：出场极少但格外值得注意的人物。
+ */
+export type PersonProminence = "major" | "minor" | "background"
+
+/** 人物分级的固定展示顺序（主要 → 次要 → 背景），未分级恒定垫底 */
+export const PERSON_PROMINENCES: PersonProminence[] = ["major", "minor", "background"]
+
+export const PERSON_PROMINENCE_LABELS: Record<PersonProminence, string> = {
+  major: "主要人物",
+  minor: "次要人物",
+  background: "背景人物",
+}
+
+/** 值是否为合法的人物分级机器键 */
+export function isPersonProminence(value: string | undefined | null): value is PersonProminence {
+  return typeof value === "string" && (PERSON_PROMINENCES as string[]).includes(value)
+}
+
+/** 非法/未分级返回空串，合法键返回标签 */
+export function personProminenceLabel(value: string | undefined | null): string {
+  return isPersonProminence(value) ? PERSON_PROMINENCE_LABELS[value] : ""
+}
+
+/** 人物分级在公开人物列表中的展示序（主要 → 次要 → 背景 → 未分级垫底），未知值视同未分级 */
+export function personProminenceRank(value: string | undefined | null): number {
+  const idx = PERSON_PROMINENCES.indexOf((value ?? "") as PersonProminence)
+  return idx === -1 ? PERSON_PROMINENCES.length : idx
+}
+
+/**
+ * 势力类型（封闭四类枚举，仅 faction 类型可赋值；存储机器键，展示用标签映射）。
+ * 语义为"本体标注"（该势力本质上是什么），与层级无关：不参与 parent 树、不进选择器约束、
+ * 不参与链接解析；当前唯一消费点是结构总览页的"独立势力"分区分组。
+ * 未分类存空串。国家/政权、企业/商社、帮派/佣兵、组织/机构。
+ */
+export type FactionKind = "nation" | "enterprise" | "gang" | "org"
+
+/** 势力类型的固定展示顺序（国家 → 企业 → 帮派 → 组织），未分类恒定垫底 */
+export const FACTION_KINDS: FactionKind[] = ["nation", "enterprise", "gang", "org"]
+
+export const FACTION_KIND_LABELS: Record<FactionKind, string> = {
+  nation: "国家/政权",
+  enterprise: "企业/商社",
+  gang: "帮派/佣兵",
+  org: "组织/机构",
+}
+
+/** 值是否为合法的势力类型机器键 */
+export function isFactionKind(value: string | undefined | null): value is FactionKind {
+  return typeof value === "string" && (FACTION_KINDS as string[]).includes(value)
+}
+
+/** 非法/未分类返回空串，合法键返回标签 */
+export function factionKindLabel(value: string | undefined | null): string {
+  return isFactionKind(value) ? FACTION_KIND_LABELS[value] : ""
+}
+
 export interface Entity {
   id: string
   slug: string
@@ -74,12 +136,36 @@ export interface Entity {
   deathPlaceFree?: string
   /** 人物专属：现状（生死状况，自由文本，可留空） */
   lifeStatus?: string
+  /** 人物专属：分级（封闭三级枚举的机器键；空串=未分级；非人物类型在写入层强制清空） */
+  prominence?: string
+  /** 势力专属：类型（封闭四类枚举的机器键；空串=未分类；非势力类型在写入层强制清空） */
+  factionKind?: string
+  /** 地点专属：辖区势力引用（对势力实体的软引用，可空；非地点类型在写入层强制清空） */
+  territoryFactionId?: string | null
   /** 人物详情页"相关任务"是否默认折叠（用于主角团等任务数量极多的人物） */
   collapseRelatedQuests?: boolean
   status: ContentStatus
   aliases: string[]
   createdAt: string
   updatedAt: string
+}
+
+/**
+ * 结构总览树节点（地点/势力层级；不含 type——两棵树按类型分节返回）。
+ * 展示树形态："单链至叶"的链压缩为一行——链首节点 children 为空、chain 依序携带后续节点；
+ * 链尾有分叉的整链不压缩，保持 children 结构。
+ */
+export interface EntityTreeNode {
+  id: string
+  slug: string
+  name: string
+  children: EntityTreeNode[]
+  /** 单链至叶压缩：链首节点沿 chain 依序携带后续节点（各节点 children 均为空） */
+  chain?: EntityTreeNode[]
+  /** 势力类型标注（仅势力节点携带原始值，地点节点恒为空；分区消费） */
+  factionKind?: string
+  /** 地点辖区（store 解析后的有效引用：仅当引用目标为节点集合内的已发布势力时携带；悬空/未标注则缺省） */
+  territory?: { id: string; name: string }
 }
 
 /**
