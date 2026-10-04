@@ -130,7 +130,7 @@ export default async function TreePage() {
         <Breadcrumb items={[{ label: "结构" }]} />
         <h1 className="page-title">结构总览</h1>
         <p className="page-subtitle">
-          地点与势力的层级一览（兄弟组按下辖规模降序，同规模按拼音；单链合并显示）。
+          地点与势力分级结构
         </p>
       </header>
 

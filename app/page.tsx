@@ -15,7 +15,7 @@ export default async function HomePage() {
     <div className="container">
       <section className="home-hero">
         <h1>{settings.siteName}</h1>
-        {settings.siteDescription ? <p>{settings.siteDescription}</p> : <p>单款游戏的中文人物、地点、势力、任务资料库。</p>}
+        {settings.siteDescription ? <p>{settings.siteDescription}</p> : <p>AK:EF 人物、地点、势力、任务索引。</p>}
         <form action="/search" method="get" className="search-form" role="search" autoComplete="off">
           <input
             type="search"

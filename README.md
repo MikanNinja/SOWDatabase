@@ -5,8 +5,8 @@
 ## 功能
 
 - 三类实体：人物、地点、势力
-- 人物专属字段：种族、所属势力（多值带角色/备注）、人际关系（有向双向称呼）、分级（主要人物 / 次要人物 / 背景人物，可留空）
-- 人物列表：分级置顶排序（级内拼音兜底），附"相关资料"计数列（任务出场 + 整篇关联 + 相关段落，简单相加）
+- 人物专属字段：种族、所属势力（多值带角色/备注）、人际关系（有向双向称呼）、分级（主要人物 / 次要人物 / 背景人物，可留空；仅在后台与导出保留，列表页不展示）
+- 人物列表：附"相关资料"计数列（任务出场 + 整篇关联 + 相关段落，简单相加）
 - 地点/势力层级：单父树结构，父级面包屑与下级列表
 - 地点辖区：地点可标注归属势力（单值引用，可留空）；结构总览页地点树逐层按辖区分区（势力名拼音序，未标注末位）
 - 结构总览页（`/tree`）：地点与势力层级树一览；兄弟组按展示规模降序、同规模拼音兜底；"单链至叶"压缩为链行（`A — B`）；结构节点可折叠（默认展开）；草稿节点剔除，其已发布后代挂靠最近已发布祖先
@@ -25,20 +25,18 @@
 ## 技术栈
 
 - Next.js 16（App Router，Turbopack）
-- SQLite（better-sqlite3）本地默认后端；生产可切换 Supabase PostgreSQL
+- SQLite（better-sqlite3）是唯一数据后端；站点构建为纯静态发布（见 `DEPLOY.md`）
 - jose 签名会话、markdown-it 受限渲染
 
 ## 本地运行
 
 ```bash
-cd web
 npm install
-cp .env.example .env.local   # 按需修改 ADMIN_PASSWORD / AUTH_SECRET
-npm run seed                 # 写入虚构测试数据（清空并重建）
+npm run seed                 # 写入虚构测试数据（清空并重建，仅用于可弃数据）
 npm run dev                  # http://localhost:3000
 ```
 
-默认登录：用户名 `admin`，密码 `change-me`（见 `.env.local`，生产环境务必修改）。
+默认登录：用户名 `admin`，密码 `admin`（无环境变量时的本地回退值，见 `lib/auth-core.ts`；生产环境必须设置 `ADMIN_PASSWORD` 与 `AUTH_SECRET`）。
 
 ## 脚本
 
@@ -51,7 +49,7 @@ npm run dev                  # http://localhost:3000
 | `npm run typecheck` | TypeScript 类型检查 |
 | `npm run seed` | 清空数据并写入虚构测试数据 |
 | `npm run verify` | 数据与链接解析功能验证 |
-| `npm run migrate:v2` | v2 数据模型迁移（幂等，支持 SQLite 与 Supabase） |
+| `npm run migrate:v2` | v2 数据模型迁移（幂等；仅 SQLite 路径仍在维护，Supabase 分支为历史留档） |
 
 ## 内容格式
 
@@ -95,37 +93,20 @@ app/                     # 路由（公开 + admin）
   entities/ texts/ search/ tree/
 components/              # Header 与后台表单
 lib/
-  db/                    # store 接口 + SQLite/Supabase 实现 + 类型
+  db/                    # store 接口 + SQLite 实现 + 类型（supabase.ts 仅历史留档）
   markdown.ts            # 受限 Markdown + [[...]] 解析
   render.ts              # 带链接解析的渲染辅助
   links.ts               # 链接问题检查
   auth.ts / auth-core.ts # 会话与登录
-scripts/                 # seed.ts、verify-data.ts
-supabase/schema.sql      # 生产 PostgreSQL 模式
+scripts/                 # seed.ts、verify-data.ts 等
+supabase/                # 仅历史留档，可忽略
 proxy.ts                 # /admin 路由保护
 ```
 
-## 部署（Vercel + Supabase）
+## 部署
 
-1. 在 Supabase 创建项目，在 SQL Editor 执行 `supabase/schema.sql`。
-2. 在 Vercel 导入本目录部署。
-3. 配置环境变量：
-
-   ```
-   DATA_BACKEND=supabase
-   SUPABASE_URL=<你的项目 URL>
-   SUPABASE_SERVICE_ROLE_KEY=<服务角色密钥>
-   ADMIN_USERNAME=<用户名>
-   ADMIN_PASSWORD=<强密码>
-   AUTH_SECRET=<强随机值，如 openssl rand -hex 32>
-   SITE_NAME=<站点名>
-   SITE_DESCRIPTION=<站点说明>
-   ```
-
-4. 生产环境必须通过 HTTPS 访问；`SUPABASE_SERVICE_ROLE_KEY` 只允许配置在服务端（不以 `NEXT_PUBLIC_` 开头）。
-
-> 注意：SQLite 后端用于本地开发与测试；线上建议使用 Supabase 以获得持久化数据库与备份。
+现行部署为本地构建纯静态站点后上传 Cloudflare Pages，详见 `DEPLOY.md`。早期的 Vercel + Supabase 服务器模式已弃用，`lib/db/supabase.ts` 与 `supabase/` 仅作历史留档。
 
 ## 测试数据
 
-`TEST_DATA.md`（工作区根目录）是虚构样例的说明文档；`npm run seed` 会按其中内容写入数据库，用于开发和验收。正式使用前可重新执行 `npm run seed` 或清空数据。
+虚构样例直接内置于 `scripts/seed.ts`；`npm run seed` 会**清空目标库并写入虚构数据**，默认目标 `data/app.db` 即真实生产数据——仅可对可弃库执行，勿对真实数据运行。

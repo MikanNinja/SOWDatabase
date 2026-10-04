@@ -1,9 +1,7 @@
 import { getStore } from "../lib/db/store"
 import { renderEntryBlocks, renderMarkdownContent } from "../lib/render"
 import { computeLinkIssues } from "../lib/links"
-import { personProminenceRank } from "../lib/db/types"
 import type { EntityTreeNode } from "../lib/db/types"
-import { compareZh } from "../lib/collate"
 
 async function main() {
   const store = await getStore()
@@ -511,20 +509,6 @@ async function main() {
   if (prominenceOf("阿澜") !== "minor") throw new Error("人物分级验证失败：阿澜")
   if (prominenceOf("铜舌") !== "background") throw new Error("人物分级验证失败：铜舌")
   if (prominenceOf("闻霜") !== "") throw new Error("人物分级验证失败：闻霜应为未分级")
-
-  // 公开人物列表排序：分级置顶（主要 → 次要 → 背景 → 未分级），级内拼音兜底
-  const publicPersonOrder = entities
-    .filter((e) => e.type === "person" && e.status === "published")
-    .sort(
-      (a, b) =>
-        personProminenceRank(a.prominence) - personProminenceRank(b.prominence) ||
-        compareZh(a.name, b.name)
-    )
-    .map((e) => e.name)
-  console.log("公开人物列表顺序（应为 陆沉舟、沈砚、阿澜、铜舌、闻霜）:", publicPersonOrder.join("、"))
-  if (publicPersonOrder.join(",") !== "陆沉舟,沈砚,阿澜,铜舌,闻霜") {
-    throw new Error("人物分级置顶排序验证失败")
-  }
 
   // 场景 Q3：非法分级键抛错不落库
   let badProminenceThrew = false

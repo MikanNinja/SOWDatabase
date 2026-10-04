@@ -3,13 +3,7 @@ import Link from "next/link"
 import { notFound } from "next/navigation"
 import { getStore } from "@/lib/db/store"
 import { wikiLinksToText } from "@/lib/markdown"
-import { compareZh } from "@/lib/collate"
-import {
-  ENTITY_TYPE_LABELS,
-  ENTITY_TYPES,
-  personProminenceLabel,
-  personProminenceRank,
-} from "@/lib/db/types"
+import { ENTITY_TYPE_LABELS, ENTITY_TYPES } from "@/lib/db/types"
 import Breadcrumb from "@/components/Breadcrumb"
 import TableFilter from "@/components/TableFilter"
 
@@ -46,16 +40,9 @@ export default async function EntityListPage(props: {
     status: "published",
   })
 
-  // v7：人物列表按"分级置顶（主要 → 次要 → 背景）→ 未分级主拼音区"排序，级内拼音兜底；
-  // 人物额外渲染"分级"与"相关资料"两列（资料计数 = 任务出场 + 整篇关联 + 相关段落，简单相加）。
+  // 人物列表附"相关资料"计数列（任务出场 + 整篇关联 + 相关段落，简单相加）；
+  // 分级字段保留于数据与表单，但不在列表页展示或参与排序（拼音序不切割）。
   const isPerson = entityType === "person"
-  const sorted = isPerson
-    ? [...entities].sort(
-        (a, b) =>
-          personProminenceRank(a.prominence) - personProminenceRank(b.prominence) ||
-          compareZh(a.name, b.name)
-      )
-    : entities
   const materialCounts = isPerson ? await store.getPersonMaterialCounts() : null
 
   return (
@@ -90,7 +77,7 @@ export default async function EntityListPage(props: {
 
       <TableFilter
         filters={[{ key: "q", attr: "q", mode: "substring" }]}
-        rows={sorted.map((entity) => ({
+        rows={entities.map((entity) => ({
           id: entity.id,
           attrs: { q: `${entity.name} ${entity.aliases.join(" ")}`.toLowerCase() },
         }))}
@@ -105,13 +92,12 @@ export default async function EntityListPage(props: {
             <thead>
               <tr>
                 <th scope="col">标准名称</th>
-                {isPerson && <th scope="col">分级</th>}
                 {isPerson && <th scope="col">相关资料</th>}
                 <th scope="col">简介</th>
               </tr>
             </thead>
             <tbody>
-              {sorted.map((entity) => (
+              {entities.map((entity) => (
                 <tr
                   key={entity.id}
                   data-q={`${entity.name} ${entity.aliases.join(" ")}`.toLowerCase()}
@@ -121,7 +107,6 @@ export default async function EntityListPage(props: {
                       {entity.name}
                     </Link>
                   </td>
-                  {isPerson && <td>{personProminenceLabel(entity.prominence)}</td>}
                   {isPerson && <td>{materialCounts?.get(entity.id) ?? 0}</td>}
                   <td>{entity.intro ? wikiLinksToText(entity.intro).slice(0, 120) : ""}</td>
                 </tr>
